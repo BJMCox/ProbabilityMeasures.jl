@@ -1,0 +1,10 @@
+name = "ProbabilityMeasures"
+uuid = "d96443b0-2461-4412-bb6f-797ac5201ef9"
+authors = ["Ryan Senne <rsenne@bu.edu>"]
+version = "0.1.0"
+
+[workspace]
+projects = ["test", "docs"]
+
+[compat]
+julia = "1.10"

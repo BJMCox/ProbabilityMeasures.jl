@@ -1,0 +1,43 @@
+# Changes here will be overwritten by Copier
+AddAllcontributors: true
+AddChangelog: true
+AddCitationCFF: true
+AddCodeOfConduct: true
+AddContributionDocs: true
+AddCopierCI: false
+AddDocs: true
+AddDocsCI: true
+AddFormatterAndLinterConfigFiles: true
+AddGitHubPRTemplate: false
+AddGitHubTemplates: false
+AddLintCI: false
+AddLychee: true
+AddMacToCI: true
+AddPrecommit: true
+AddPrecommitUpdateCI: true
+AddTagBotCI: true
+AddTestCI: true
+AddWinToCI: true
+Authors: Ryan Senne <rsenne@bu.edu>
+CheckExplicitImports: true
+CodeOfConductContact: rsenne@bu.edu
+ConfigIndentation: 2
+ExplicitImportsChecklist: exclude_all_qualified_accesses_are_public
+GitHubActionVersionAutoUpdate: dependabot
+JuliaCompatAutoUpdate: dependabot
+JuliaIndentation: 4
+JuliaMinCIVersion: lts
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Ryan Senne
+MarkdownIndentation: 2
+PackageName: ProbabilityMeasures
+PackageOwner: rsenne
+PackageUUID: d96443b0-2461-4412-bb6f-797ac5201ef9
+RunJuliaNightlyOnCI: false
+StrategyConfirmIncluded: true
+StrategyLevel: 2
+StrategyReviewExcluded: true
+TestingStrategy: basic_auto_discover
+UseCirrusCI: false
+_src_path: C:\Users\senne\.julia\packages\BestieTemplate\6QVd6
