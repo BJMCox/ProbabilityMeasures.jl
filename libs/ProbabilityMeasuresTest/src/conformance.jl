@@ -1,8 +1,8 @@
 #=
   The conformance suite. `test_measure` is the single entry point: every measure in
   the package must pass it, and it is the mechanism by which the type-genericity,
-  allocation, AD and GPU claims in the README are actually enforced rather than
-  merely asserted.
+  allocation, AD and GPU claims in the README are enforced rather than merely
+  asserted.
 =#
 
 """
@@ -10,9 +10,9 @@
 
 The AD backends exercised by [`test_measure`](@ref) by default.
 
-Enzyme is deliberately absent: it is a heavy dependency whose Windows support is
-uneven, and a conformance suite that cannot run everywhere is not much of a
-conformance suite. Pass it explicitly via `ad_backends` to include it.
+Enzyme is absent: it is a heavy dependency whose Windows support is uneven, and a
+conformance suite that cannot run everywhere is not much of a conformance suite. Pass
+it explicitly via `ad_backends` to include it.
 """
 function default_ad_backends()
     return (
@@ -39,24 +39,25 @@ _withtype(d, ::Type{T}) where {T} = _reconstruct(d, map(T, _paramvec(d)))
 
 Run the full conformance suite against the measure `d`.
 
-Each block below corresponds to a property this package claims to guarantee. A new
-measure is "done" when this passes.
+Each block corresponds to a property this package claims to guarantee. A new measure
+is "done" when this passes.
 
-# Keyword arguments
+# Keywords
 
+  - `name::AbstractString`: the testset name. Defaults to the type name of `d`.
   - `xs`: evaluation points. Defaults to a spread of quantiles plus the mean.
   - `types`: the floating-point types swept for genericity.
   - `ad_backends`: see [`default_ad_backends`](@ref).
-  - `reference_logpdf`: an optional `(d, x) -> Real` to check numerics against, e.g.
-    a Distributions.jl equivalent.
-  - `nsamples`: Monte Carlo sample count for the moment checks.
-  - The `check_*` flags force an individual block on or off.
+  - `reference_logpdf`: an optional `(d, x) -> Real` to check numerics against, for
+    example a Distributions.jl equivalent.
+  - `nsamples::Int`: Monte Carlo sample count for the moment checks.
+  - `check_*::Bool`: force an individual block on or off.
 
 # Which blocks run by default
 
-The blocks that hold for *every* measure -- interface conformance, totality, type
-genericity, type stability, allocations, AD, GPU broadcast -- default to on and are
-the actual invariants; switching one off is an admission that the measure does not
+The blocks that hold for *every* measure (interface conformance, totality, type
+genericity, type stability, allocations, AD, GPU broadcast) default to on and are the
+actual invariants; switching one off is an admission that the measure does not
 conform.
 
 The rest are conditional on what the measure is, and are derived from it rather than
@@ -69,7 +70,7 @@ defaulted to `true`:
     so they run only when the measure actually defines those methods.
 
 Deriving these keeps the flags from quietly encoding "continuous and univariate" as
-though it were universal -- the first discrete measure should not have to pass three
+though it were universal. The first discrete measure should not have to pass three
 `false`s to get a meaningful run.
 """
 function test_measure(
@@ -93,8 +94,10 @@ function test_measure(
 )
     @testset "$name" begin
         check_interface && @testset "interface" begin
-            # `Interfaces.test` prints a per-component report and returns a Bool;
-            # without the `@test` the testset records nothing.
+            #=
+              `Interfaces.test` prints a per-component report and returns a Bool;
+              without the `@test` the testset records nothing.
+            =#
             @test Interfaces.test(MeasureInterface, typeof(d), [d])
         end
         check_totality && @testset "totality" test_totality(d, xs)
@@ -122,9 +125,12 @@ end
   editing every `test_measure` call site.
 =#
 
-# `test_normalization` and the integral check in `test_cdf` both call `quadgk` between
-# `minimum(support(d))` and `maximum(support(d))`. That is a Lebesgue integral over an
-# interval: it needs a continuous univariate measure whose support has real endpoints.
+#=
+  `test_normalization` and the integral check in `test_cdf` both call `quadgk`
+  between `minimum(support(d))` and `maximum(support(d))`. That is a Lebesgue
+  integral over an interval: it needs a continuous univariate measure whose support
+  has real endpoints.
+=#
 function _can_integrate(d)
     d isa ContinuousMeasure || return false
     d isa UnivariateMeasure || return false
@@ -135,13 +141,13 @@ end
 #=
   Whether `f` has a method that genuinely dispatches on `d`.
 
-  `hasmethod` alone is not enough for the moments. `Statistics.mean`, `var` and `std`
-  all carry generic *iterator* methods whose argument type is `Any`, so
-  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written --
+  `hasmethod` alone is not enough for the moments. `Statistics.mean`, `var` and
+  `std` all carry generic *iterator* methods whose argument type is `Any`, so
+  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written,
   including one that defines no moments at all, which would then fail inside
-  `test_moments` rather than skipping it. Requiring the resolved method to be narrower
-  than `Any` distinguishes "implements mean" from "is a value, and mean accepts
-  values".
+  `test_moments` rather than skipping it. Requiring the resolved method to be
+  narrower than `Any` distinguishes "implements mean" from "is a value, and mean
+  accepts values".
 =#
 function _dispatches_on(f, argtypes::Tuple)
     D = Tuple{argtypes...}
@@ -152,9 +158,11 @@ function _dispatches_on(f, argtypes::Tuple)
     return length(params) >= 2 && params[2] !== Any
 end
 
-# `cdf` and the moments are the optional half of `MeasureInterface`. Probe with
-# `eltype(d)` rather than a drawn value: this runs while building default kwargs, and
-# must not depend on `rand` having been called.
+#=
+  `cdf` and the moments are the optional half of `MeasureInterface`. Probe with
+  `eltype(d)` rather than a drawn value: this runs while building default kwargs,
+  and must not depend on `rand` having been called.
+=#
 _has_cdf(d) = _dispatches_on(cdf, (typeof(d), eltype(d)))
 
 function _has_moments(d)
@@ -168,11 +176,13 @@ function default_testpoints(d)
     return [float(quantile(d, p)) for p in ps]
 end
 
-# --- Invariant 2: logdensityof is total ------------------------------------------
+# Invariant 2: logdensityof is total.
 
 function test_totality(d, xs)
-    # A throw here is undefined behaviour inside a GPU kernel, and a PPL will hand
-    # these values in from a bad proposal or an overshooting line search.
+    #=
+      A throw here is undefined behaviour inside a GPU kernel, and a PPL will hand
+      these values in from a bad proposal or an overshooting line search.
+    =#
     for x in (Inf, -Inf, NaN, floatmax(Float64), -floatmax(Float64), 0.0)
         @test (logdensityof(d, x); true)
     end
@@ -180,13 +190,15 @@ function test_totality(d, xs)
         @test isfinite(logdensityof(d, x))
     end
 
-    # Invalid parameters produce a non-finite value rather than an error, and
-    # construction itself never complains.
-    #
-    # Deliberately *not* `isnan`: which non-finite value you get is not part of the
-    # contract. `Normal(Inf, 1.0)` is invalid but has a log-density of -Inf, and
-    # pinning the suite to NaN would push callers toward `isnan` as a validity
-    # sentinel, which silently accepts exactly that case.
+    #=
+      Invalid parameters produce a non-finite value rather than an error, and
+      construction itself never complains.
+
+      Not `isnan`: which non-finite value you get is not part of the contract.
+      `Normal(Inf, 1.0)` is invalid but has a log-density of -Inf, and pinning the
+      suite to NaN would push callers toward `isnan` as a validity sentinel, which
+      silently accepts exactly that case.
+    =#
     for bad in _invalids(d)
         @test !checkparams(bad)
         @test !isfinite(logdensityof(bad, first(xs)))
@@ -196,7 +208,7 @@ end
 "Instances of `typeof(d)` with invalid parameters; empty if none are known."
 _invalids(d) = ()
 
-# --- Invariant 1: type genericity -------------------------------------------------
+# Invariant 1: type genericity.
 
 function test_genericity(d, xs, types)
     for T in types
@@ -207,13 +219,15 @@ function test_genericity(d, xs, types)
         @test eltype(dT) === T
     end
 
-    # Mixed parameter types must neither error nor widen past the true promotion:
-    # one Float32 parameter alongside Float64 ones promotes to Float64, and no
-    # further.
-    #
-    # A *tuple*, not a vector. `[Float32(a), Float64(b)]` is a `Vector{Float64}` --
-    # the literal promotes and converts the Float32 straight back, so the measure
-    # comes out homogeneous and the check passes without ever testing anything.
+    #=
+      Mixed parameter types must neither error nor widen past the true promotion:
+      one Float32 parameter alongside Float64 ones promotes to Float64, and no
+      further.
+
+      A *tuple*, not a vector. `[Float32(a), Float64(b)]` is a `Vector{Float64}`:
+      the literal promotes and converts the Float32 straight back, so the measure
+      comes out homogeneous and the check passes without ever testing anything.
+    =#
     p = _paramvec(d)
     if length(p) >= 2
         mixed = _reconstruct(d, (Float32(p[1]), Float64.(p[2:end])...))
@@ -222,17 +236,21 @@ function test_genericity(d, xs, types)
         @test logdensityof(mixed, Float32(first(xs))) isa Float64
     end
 
-    # Exact (integer) parameters must not cap the precision of the result -- it has
-    # to follow the argument.
+    #=
+      Exact (integer) parameters must not cap the precision of the result; it has to
+      follow the argument.
+    =#
     exact = _exactparams(d)
     if exact !== nothing
         x = first(xs)
         @test logdensityof(exact, Float32(x)) isa Float32
         vbig = logdensityof(exact, big(float(x)))
         @test vbig isa BigFloat
-        # The same measure with the parameters already widened. If any Irrational
-        # constant or `log` were evaluated at Float64 along the way, these would
-        # agree only to ~1e-16 instead of to full BigFloat precision.
+        #=
+          The same measure with the parameters already widened. If any Irrational
+          constant or `log` were evaluated at Float64 along the way, these would
+          agree only to ~1e-16 instead of to full BigFloat precision.
+        =#
         @test abs(vbig - logdensityof(_withtype(exact, BigFloat), big(float(x)))) < 1e-70
     end
 end
@@ -240,7 +258,7 @@ end
 "An instance of `typeof(d)` with exact (integer) parameters, or `nothing`."
 _exactparams(d) = nothing
 
-# --- Type stability and allocations ------------------------------------------------
+# Type stability and allocations.
 
 function test_inference(d, xs)
     x = first(xs)
@@ -251,13 +269,15 @@ function test_inference(d, xs)
 end
 
 function test_allocations(d, xs)
-    # AllocCheck proves this statically over the whole call graph, which is far
-    # stronger than timing `@allocated` and hoping the benchmark was warm.
+    #=
+      AllocCheck proves this statically over the whole call graph, which is far
+      stronger than timing `@allocated` and hoping the benchmark was warm.
+    =#
     @test isempty(check_allocs(logdensityof, (typeof(d), typeof(first(xs)))))
     @test isempty(check_allocs(rand, (Xoshiro, typeof(d))))
 end
 
-# --- Correctness -------------------------------------------------------------------
+# Correctness.
 
 function test_normalization(d)
     s = support(d)
@@ -271,23 +291,29 @@ function test_cdf(d, xs)
         @test 0 <= c <= 1
         @test cdf(d, x) + ccdf(d, x) ≈ 1
         @test quantile(d, c) ≈ x rtol = 1e-6
-        # `atol` as well as `rtol`: in the upper tail `log(c)` is a tiny negative
-        # number and a purely relative comparison is meaningless there.
+        #=
+          `atol` as well as `rtol`: in the upper tail `log(c)` is a tiny negative
+          number and a purely relative comparison is meaningless there.
+        =#
         @test logcdf(d, x) ≈ log(c) rtol = 1e-8 atol = 1e-12
         @test logccdf(d, x) ≈ log(ccdf(d, x)) rtol = 1e-8 atol = 1e-12
     end
 
-    # The whole point of `logcdf` over `log(cdf(...))`: `cdf` underflows to zero far
-    # out in the tail, where the log-scale value is still perfectly finite.
+    #=
+      The whole point of `logcdf` over `log(cdf(...))`: `cdf` underflows to zero far
+      out in the tail, where the log-scale value is still perfectly finite.
+    =#
     deep = float(quantile(d, 1e-300))
     if isfinite(deep)
         @test isfinite(logcdf(d, deep))
     end
 
-    # The distribution function has to be as type-generic as the density is. Checking
-    # only `logdensityof` let a `Float64`-collapsing `quantile` through: `-sqrt2 * x`
-    # parses as `(-sqrt2) * x`, and negating an Irrational materializes it at
-    # Float64 before it ever sees the argument.
+    #=
+      The distribution function has to be as type-generic as the density is.
+      Checking only `logdensityof` let a `Float64`-collapsing `quantile` through:
+      `-sqrt2 * x` parses as `(-sqrt2) * x`, and negating an Irrational materializes
+      it at Float64 before it ever sees the argument.
+    =#
     for T in (Float32, Float64, BigFloat)
         dT = _withtype(d, T)
         xT = T(first(xs))
@@ -298,17 +324,21 @@ function test_cdf(d, xs)
         @test quantile(dT, T(1) / 4) isa T
     end
 
-    # ...and as precise. A Float64 intermediate anywhere in the chain caps this at
-    # ~1e-17 instead of full BigFloat precision.
+    #=
+      And as precise. A Float64 intermediate anywhere in the chain caps this at
+      ~1e-17 instead of full BigFloat precision.
+    =#
     setprecision(BigFloat, 256) do
         dbig = _withtype(d, BigFloat)
         p = big"0.25"
         @test abs(cdf(dbig, quantile(dbig, p)) - p) < 1e-60
     end
 
-    # cdf must be the integral of the density -- but only where that sentence is true.
-    # For a discrete measure the cdf is a sum, so guard this on the same predicate
-    # that gates `test_normalization` rather than assuming continuity here.
+    #=
+      cdf must be the integral of the density, but only where that sentence is true.
+      For a discrete measure the cdf is a sum, so guard this on the same predicate
+      that gates `test_normalization` rather than assuming continuity here.
+    =#
     if _can_integrate(d)
         lo = minimum(support(d))
         x = float(quantile(d, 0.3))
@@ -329,7 +359,7 @@ function test_moments(d, nsamples)
     @test std(d) ≈ sqrt(var(d))
 end
 
-# --- Automatic differentiation -------------------------------------------------------
+# Automatic differentiation.
 
 function test_ad(d, xs, backends)
     x = first(xs)
@@ -344,8 +374,10 @@ function test_ad(d, xs, backends)
         end
     end
 
-    # Sampling is written in reparameterized form, so the pathwise derivative must
-    # exist and be exact -- this is what a VI backend in the PPL relies on.
+    #=
+      Sampling is written in reparameterized form, so the pathwise derivative must
+      exist and be exact. This is what a VI backend in the PPL relies on.
+    =#
     @testset "reparameterized rand" test_reparameterization(d)
 end
 
@@ -356,27 +388,33 @@ function test_reparameterization(d)
     g = ForwardDiff.gradient(draw, p0)
     reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
     @test g ≈ reference rtol = 1e-5 atol = 1e-8
-    # A zero gradient would mean the draw does not actually depend on the
-    # parameters, i.e. the reparameterization is broken.
+    #=
+      A zero gradient would mean the draw does not actually depend on the
+      parameters, i.e. the reparameterization is broken.
+    =#
     @test any(!iszero, g)
 end
 
-# --- GPU ---------------------------------------------------------------------------
+# GPU.
 
 function test_gpu(d, xs)
-    # JLArray is a CPU-backed GPUArray. It exercises the same broadcast machinery and
-    # the same scalar-indexing ban as CUDA, so the real GPU failure modes are caught
-    # on ordinary CI hardware with no device present.
+    #=
+      JLArray is a CPU-backed GPUArray. It exercises the same broadcast machinery
+      and the same scalar-indexing ban as CUDA, so the real GPU failure modes are
+      caught on ordinary CI hardware with no device present.
+    =#
     d32 = _withtype(d, Float32)
     x32 = Float32.(xs)
     expected = logdensityof.(d32, x32)
 
     @test isbits(d32)  # a non-isbits measure cannot be captured by a kernel
 
-    # `allowscalar` only takes a do-block for *permitting* scalar indexing; to forbid
-    # it you set the task-local flag directly. Save and restore it around the
-    # broadcast: this is the caller's task state, not ours to leave flipped once the
-    # suite returns. The idiom mirrors GPUArraysCore's own `@allowscalar`.
+    #=
+      `allowscalar` only takes a do-block for *permitting* scalar indexing; to forbid
+      it you set the task-local flag directly. Save and restore it around the
+      broadcast: this is the caller's task state, not ours to leave flipped once the
+      suite returns. The idiom mirrors GPUArraysCore's own `@allowscalar`.
+    =#
     saved = get(task_local_storage(), :ScalarIndexing, nothing)
     task_local_storage(:ScalarIndexing, GPUArraysCore.ScalarDisallowed)
     try

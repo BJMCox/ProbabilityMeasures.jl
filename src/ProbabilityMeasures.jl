@@ -26,13 +26,13 @@ include("core/interface.jl")
 include("univariate/continuous/normal.jl")
 
 #=
-  Every exported name is one a PPL is expected to call. That is a deliberate
-  constraint rather than an aesthetic one: adding an export later is a non-breaking
-  change, removing one is not, so anything speculative costs more to ship now than
-  to withhold.
+  Every exported name is one a PPL is expected to call. That is a constraint rather
+  than an aesthetic choice: adding an export later is a non-breaking change,
+  removing one is not, so anything speculative costs more to ship now than to
+  withhold.
 
-  Deliberately absent, and easy to add when something needs them: `mode`,
-  `skewness`, `kurtosis`, `mgf`, `cf` (Distributions.jl inheritance, not inference);
+  Absent for now, and easy to add when something needs them: `mode`, `skewness`,
+  `kurtosis`, `mgf`, `cf` (Distributions.jl inheritance, not inference);
   `Matrixvariate`; `PositiveReals`/`UnitInterval`/`RealInterval` (no measure uses
   them yet); `variateform`/`valuesupport` (the type parameters are already there).
 
@@ -41,7 +41,7 @@ include("univariate/continuous/normal.jl")
   one does not exist yet. For a measure that is normalized by construction, the
   reference is a total function of the `ValueSupport` parameter and so carries no
   information the type does not already have. When linking does arrive it will need
-  a log-Jacobian, not the name of a base measure -- so the right shape is better
+  a log-Jacobian, not the name of a base measure, so the right shape is better
   decided then than guessed at now.
 =#
 
@@ -58,8 +58,10 @@ export Support, RealLine, support, insupport
 export checkparams, noisetype, basefloat
 export cdf, ccdf, logcdf, logccdf, entropy
 
-# Re-exported so that `using ProbabilityMeasures` is enough to work with a measure.
-# These are existing ecosystem names, not new API surface.
+#=
+  Re-exported so that `using ProbabilityMeasures` is enough to work with a measure.
+  These are existing ecosystem names, not new API surface.
+=#
 export logdensityof, densityof
 export params
 export mean, var, std, median, quantile

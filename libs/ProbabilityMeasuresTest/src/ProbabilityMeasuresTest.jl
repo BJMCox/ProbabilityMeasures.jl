@@ -4,7 +4,7 @@
   `Pkg.develop`s it at runtime (see test/runtests.jl).
 
   Keeping it here rather than in the main package is what lets the conformance
-  tooling -- JET, AllocCheck, four AD backends, JLArrays, QuadGK -- stay out of
+  tooling (JET, AllocCheck, four AD backends, JLArrays, QuadGK) stay out of
   ProbabilityMeasures' dependency graph entirely. A measure library that a PPL
   depends on should be cheap to load.
 =#
@@ -23,8 +23,10 @@ using JET: JET
 using JLArrays: JLArray
 using Mooncake: Mooncake
 using ProbabilityMeasures
-# Unexported dispatch aliases. The conditional `check_*` defaults ask what kind of
-# measure `d` is, and `isa ContinuousMeasure` is the idiom the package itself uses.
+#=
+  Unexported dispatch aliases. The conditional `check_*` defaults ask what kind of
+  measure `d` is, and `isa ContinuousMeasure` is the idiom the package itself uses.
+=#
 using ProbabilityMeasures: ContinuousMeasure, UnivariateMeasure
 using QuadGK: quadgk
 using Random: Xoshiro

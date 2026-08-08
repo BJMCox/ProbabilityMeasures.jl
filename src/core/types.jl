@@ -4,9 +4,9 @@
 Trait describing the shape of a single draw from a measure: [`Univariate`](@ref) or
 [`Multivariate`](@ref).
 
-There is deliberately no `Matrixvariate`. Adding a variate form later is a
-non-breaking change; shipping one that nothing implements is a guess that a
-downstream PPL then has to keep working.
+There is no `Matrixvariate`. Adding a variate form later is a non-breaking change,
+while shipping one that nothing implements is a guess a downstream PPL then has to
+keep working.
 """
 abstract type VariateForm end
 
@@ -35,54 +35,62 @@ struct Discrete <: ValueSupport end
 Supertype for all probability measures.
 
 Every subtype is a *normalized* measure: its density integrates to one against the
-measure implied by its [`ValueSupport`](@ref) -- Lebesgue for [`Continuous`](@ref),
+measure implied by its [`ValueSupport`](@ref), Lebesgue for [`Continuous`](@ref) and
 counting for [`Discrete`](@ref). There is no base-measure recursion and no
-unnormalized measure in this package -- `logdensityof` returns the finished value.
+unnormalized measure in this package, so `logdensityof` returns the finished value.
 
-# Implementing a new measure
+# Type parameters
 
-Mandatory:
+  - `F<:VariateForm`: the shape of a single draw.
+  - `S<:ValueSupport`: whether draws are continuous or discrete.
 
-  - `DensityInterface.logdensityof(d, x)` -- the normalized log-density
-  - `Base.rand(rng::AbstractRNG, d)` -- a single draw
-  - `Base.eltype(::Type{typeof(d)})` -- the type of a draw
-  - [`support`](@ref)`(d)`
+# Required methods
 
-Everything else has a fallback: [`insupport`](@ref), [`params`](@ref), and the
-moment functions.
+  - `DensityInterface.logdensityof(d, x)`: the normalized log-density.
+  - `Base.rand(rng::AbstractRNG, d)`: a single draw.
+  - `Base.eltype(::Type{typeof(d)})`: the type of a draw.
+  - [`support`](@ref)`(d)`.
 
-Three invariants are enforced by the conformance suite
-(`ProbabilityMeasuresTest.test_measure`, in `libs/`) and must hold:
+[`insupport`](@ref), [`params`](@ref) and the moment functions all have fallbacks.
+
+# Invariants
+
+The conformance suite (`ProbabilityMeasuresTest.test_measure`, in `libs/`) enforces
+these, and they must hold:
 
  1. **Type genericity.** No `Float64` literals in the density. Constants come from
     `IrrationalConstants` or `oftype`. The result type is
     `float(promote_type(<parameter types>..., typeof(x)))`.
  2. **Totality.** `logdensityof` never throws. Outside the support, and for invalid
-    parameters, it returns a correctly-typed non-finite value (`-Inf` or `NaN`)
-    instead. This is what makes it callable from inside a GPU kernel. Note that
-    *which* non-finite value you get is not part of the contract -- use
-    [`checkparams`](@ref), not `isnan`, to detect invalid parameters.
+    parameters, it returns a correctly-typed non-finite value (`-Inf` or `NaN`),
+    which is what makes it callable from inside a GPU kernel. Which non-finite value
+    you get is not part of the contract; use [`checkparams`](@ref) rather than
+    `isnan` to detect invalid parameters.
  3. **No validation in constructors.** See [`checkparams`](@ref).
 """
 abstract type AbstractProbabilityMeasure{F<:VariateForm,S<:ValueSupport} end
 
-# Dispatch aliases. `AbstractProbabilityMeasure` is 28 characters, which pushes most
-# `<:` clauses past the 92-column margin.
-#
-# Only `ContinuousUnivariateMeasure` is exported -- it is what you subtype to write a
-# measure. The other three exist because the fallbacks in `interface.jl` dispatch on
-# them, and are reachable as `ProbabilityMeasures.UnivariateMeasure` if you need them.
-#
-# There is no accessor pair (`variateform`/`valuesupport`) either: the parameters are
-# already on the type, and `d isa ContinuousMeasure` reads better than
-# `valuesupport(d) === Continuous` at every call site that would have used it.
+#=
+  Dispatch aliases. `AbstractProbabilityMeasure` is 28 characters, which pushes most
+  `<:` clauses past the 92-column margin.
+
+  Only `ContinuousUnivariateMeasure` is exported; it is what you subtype to write a
+  measure. The other three back the fallbacks in `interface.jl`, and are reachable as
+  `ProbabilityMeasures.UnivariateMeasure` if you need them.
+
+  There is no `variateform`/`valuesupport` accessor pair either: the parameters are
+  already on the type, and `d isa ContinuousMeasure` reads better than
+  `valuesupport(d) === Continuous` at every call site that would have used it.
+=#
 const UnivariateMeasure{S} = AbstractProbabilityMeasure{Univariate,S}
 const ContinuousMeasure{F} = AbstractProbabilityMeasure{F,Continuous}
 const DiscreteMeasure{F} = AbstractProbabilityMeasure{F,Discrete}
 const ContinuousUnivariateMeasure = AbstractProbabilityMeasure{Univariate,Continuous}
 
-# This single line is the whole batching story for univariate measures. Because
-# measures hold scalar, `isbits` parameters, `logdensityof.(d, xs)` over a device
-# array captures `d` by value and fuses into one kernel -- no wrapper type, no
-# shape algebra, no separate batched code path.
+#=
+  This single line is the whole batching story for univariate measures. Measures hold
+  scalar, `isbits` parameters, so `logdensityof.(d, xs)` over a device array captures
+  `d` by value and fuses into one kernel: no wrapper type, no shape algebra, no
+  separate batched code path.
+=#
 Base.broadcastable(d::AbstractProbabilityMeasure) = Ref(d)
