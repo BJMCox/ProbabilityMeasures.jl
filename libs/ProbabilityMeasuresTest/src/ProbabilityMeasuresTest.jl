@@ -17,12 +17,15 @@ using DifferentiationInterface: DifferentiationInterface
 using DifferentiationInterface: AutoForwardDiff, AutoMooncake, AutoReverseDiff, AutoZygote
 using FiniteDifferences: FiniteDifferences, central_fdm
 using ForwardDiff: ForwardDiff
-using GPUArraysCore: allowscalar
+using GPUArraysCore: GPUArraysCore
 using Interfaces: Interfaces, @implements, @interface
 using JET: JET
 using JLArrays: JLArray
 using Mooncake: Mooncake
 using ProbabilityMeasures
+# Unexported dispatch aliases. The conditional `check_*` defaults ask what kind of
+# measure `d` is, and `isa ContinuousMeasure` is the idiom the package itself uses.
+using ProbabilityMeasures: ContinuousMeasure, UnivariateMeasure
 using QuadGK: quadgk
 using Random: Xoshiro
 using ReverseDiff: ReverseDiff

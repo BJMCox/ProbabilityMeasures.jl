@@ -19,15 +19,14 @@ struct Multivariate <: VariateForm end
 """
     ValueSupport
 
-Trait describing whether draws are [`Continuous`](@ref) or [`Discrete`](@ref). This
-also selects the default reference measure; see [`reference`](@ref).
+Trait describing whether draws are [`Continuous`](@ref) or [`Discrete`](@ref).
 """
 abstract type ValueSupport end
 
-"Draws take values in a continuum; the default reference is [`Lebesgue`](@ref)."
+"Draws take values in a continuum, so densities are with respect to Lebesgue measure."
 struct Continuous <: ValueSupport end
 
-"Draws take values in a countable set; the default reference is [`Counting`](@ref)."
+"Draws take values in a countable set, so densities are with respect to counting measure."
 struct Discrete <: ValueSupport end
 
 """
@@ -35,9 +34,10 @@ struct Discrete <: ValueSupport end
 
 Supertype for all probability measures.
 
-Every subtype is a *normalized* measure: its density integrates to one against
-[`reference`](@ref)`(d)`. There is no base-measure recursion and no unnormalized
-measure in this package -- `logdensityof` returns the finished value.
+Every subtype is a *normalized* measure: its density integrates to one against the
+measure implied by its [`ValueSupport`](@ref) -- Lebesgue for [`Continuous`](@ref),
+counting for [`Discrete`](@ref). There is no base-measure recursion and no
+unnormalized measure in this package -- `logdensityof` returns the finished value.
 
 # Implementing a new measure
 
@@ -48,8 +48,8 @@ Mandatory:
   - `Base.eltype(::Type{typeof(d)})` -- the type of a draw
   - [`support`](@ref)`(d)`
 
-Everything else has a fallback: [`insupport`](@ref), [`params`](@ref),
-[`reference`](@ref), and the moment functions.
+Everything else has a fallback: [`insupport`](@ref), [`params`](@ref), and the
+moment functions.
 
 Three invariants are enforced by the conformance suite
 (`ProbabilityMeasuresTest.test_measure`, in `libs/`) and must hold:
@@ -70,9 +70,8 @@ abstract type AbstractProbabilityMeasure{F<:VariateForm,S<:ValueSupport} end
 # `<:` clauses past the 92-column margin.
 #
 # Only `ContinuousUnivariateMeasure` is exported -- it is what you subtype to write a
-# measure. The other three exist because the fallbacks in `interface.jl` and
-# `reference.jl` dispatch on them, and are reachable as
-# `ProbabilityMeasures.UnivariateMeasure` if you need them.
+# measure. The other three exist because the fallbacks in `interface.jl` dispatch on
+# them, and are reachable as `ProbabilityMeasures.UnivariateMeasure` if you need them.
 #
 # There is no accessor pair (`variateform`/`valuesupport`) either: the parameters are
 # already on the type, and `d isa ContinuousMeasure` reads better than

@@ -21,7 +21,6 @@ using StatsAPI: StatsAPI, params
 include("core/types.jl")
 include("core/mathfuns.jl")
 include("core/support.jl")
-include("core/reference.jl")
 include("core/interface.jl")
 
 include("univariate/continuous/normal.jl")
@@ -36,6 +35,14 @@ include("univariate/continuous/normal.jl")
   `skewness`, `kurtosis`, `mgf`, `cf` (Distributions.jl inheritance, not inference);
   `Matrixvariate`; `PositiveReals`/`UnitInterval`/`RealInterval` (no measure uses
   them yet); `variateform`/`valuesupport` (the type parameters are already there).
+
+  Also absent: a `reference`/`Lebesgue`/`Counting` trait. Its only stated purpose
+  was to anchor a change of variables, and the transform layer that would perform
+  one does not exist yet. For a measure that is normalized by construction, the
+  reference is a total function of the `ValueSupport` parameter and so carries no
+  information the type does not already have. When linking does arrive it will need
+  a log-Jacobian, not the name of a base measure -- so the right shape is better
+  decided then than guessed at now.
 =#
 
 # Core types
@@ -44,8 +51,7 @@ export VariateForm, Univariate, Multivariate
 export ValueSupport, Continuous, Discrete
 export ContinuousUnivariateMeasure
 
-# Reference measures and supports
-export ReferenceMeasure, Lebesgue, Counting, reference
+# Supports
 export Support, RealLine, support, insupport
 
 # Interface
