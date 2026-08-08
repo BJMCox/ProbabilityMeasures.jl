@@ -3,11 +3,11 @@
 
 The measure that a density is taken with respect to.
 
-This package is *normalized-only*: `logdensityof` returns the finished
-log-density with no base-measure recursion to unroll. But the reference still has to
-be recorded, because it is what a change of variables acts on and what makes a
-Radon--Nikodym derivative between two measures meaningful. Keeping it as a
-zero-field trait rather than a measure object gets that bookkeeping for free.
+This package is *normalized-only*: `logdensityof` returns the finished log-density
+with no base-measure recursion to unroll. The reference still has to be recorded,
+because it is what a change of variables acts on and what makes a Radon-Nikodym
+derivative between two measures meaningful. Keeping it as a zero-field trait rather
+than a measure object gets that bookkeeping for free.
 """
 abstract type ReferenceMeasure end
 
@@ -24,7 +24,7 @@ The measure that `logdensityof(d, x)` is a density with respect to.
 
 Defaults are derived from the [`ValueSupport`](@ref) type parameter, so an ordinary
 measure never writes this method. Override it only for a measure whose reference is
-not implied by its support -- a mixed discrete/continuous measure, for instance.
+not implied by its support, such as a mixed discrete/continuous measure.
 """
 reference(::ContinuousMeasure) = Lebesgue()
 reference(::DiscreteMeasure) = Counting()

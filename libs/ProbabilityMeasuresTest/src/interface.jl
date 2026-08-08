@@ -62,6 +62,6 @@ plus the invariants that make a measure usable inside a PPL: `logdensityof` must
 total, and the measure must broadcast as a scalar so that batched evaluation fuses
 into a single kernel.
 
-Optional components are the summaries and the distribution function -- meaningful
-for a univariate measure, not for every measure.
+Optional components are the summaries and the distribution function, which are
+meaningful for a univariate measure but not for every measure.
 """

@@ -6,8 +6,10 @@ using Test
 
 @testset "traits" begin
     d = Normal(0.0, 1.0)
-    # There is no `variateform`/`valuesupport` accessor pair by design -- the type
-    # parameters are already on the type, and `isa` is the idiom.
+    #=
+      There is no `variateform`/`valuesupport` accessor pair: the type parameters are
+      already on the type, and `isa` is the idiom.
+    =#
     @test d isa AbstractProbabilityMeasure{Univariate,Continuous}
     @test d isa ContinuousUnivariateMeasure
     @test d isa UnivariateMeasure
@@ -16,8 +18,10 @@ using Test
 end
 
 @testset "reference defaults from ValueSupport" begin
-    # No measure should ever have to write a `reference` method; it falls out of the
-    # ValueSupport type parameter.
+    #=
+      No measure should ever have to write a `reference` method; it falls out of the
+      ValueSupport type parameter.
+    =#
     @test reference(Normal(0.0, 1.0)) === Lebesgue()
     @test Lebesgue() isa ReferenceMeasure
     @test Counting() isa ReferenceMeasure

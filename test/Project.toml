@@ -2,6 +2,7 @@
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 ProbabilityMeasures = "d96443b0-2461-4412-bb6f-797ac5201ef9"
 ProbabilityMeasuresTest = "8c1f4a3e-27bd-4b0a-9f4d-6e2b1c5a7d90"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
