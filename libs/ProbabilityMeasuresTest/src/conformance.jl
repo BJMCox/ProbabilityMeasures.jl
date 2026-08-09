@@ -51,8 +51,27 @@ is "done" when this passes.
   - `reference_logpdf`: an optional `(d, x) -> Real` to check numerics against, for
     example a Distributions.jl equivalent.
   - `nsamples::Int`: Monte Carlo sample count for the moment checks.
-  - `check_*::Bool`: switch off individual blocks for measures that cannot support
-    them.
+  - `check_*::Bool`: force an individual block on or off.
+
+# Which blocks run by default
+
+The blocks that hold for *every* measure (interface conformance, totality, type
+genericity, type stability, allocations, AD, GPU broadcast) default to on and are the
+actual invariants; switching one off is an admission that the measure does not
+conform.
+
+The rest are conditional on what the measure is, and are derived from it rather than
+defaulted to `true`:
+
+  - `check_normalization` integrates the density with `quadgk`, which is only
+    meaningful for a continuous univariate measure. A discrete measure would need a
+    sum over its support instead, and nothing here can enumerate one yet.
+  - `check_cdf` and `check_moments` cover the *optional* half of `MeasureInterface`,
+    so they run only when the measure actually defines those methods.
+
+Deriving these keeps the flags from quietly encoding "continuous and univariate" as
+though it were universal. The first discrete measure should not have to pass three
+`false`s to get a meaningful run.
 """
 function test_measure(
     d;
@@ -67,9 +86,9 @@ function test_measure(
     check_genericity::Bool=true,
     check_inference::Bool=true,
     check_allocations::Bool=true,
-    check_normalization::Bool=true,
-    check_cdf::Bool=true,
-    check_moments::Bool=true,
+    check_normalization::Bool=_can_integrate(d),
+    check_cdf::Bool=_has_cdf(d),
+    check_moments::Bool=_has_moments(d),
     check_ad::Bool=true,
     check_gpu::Bool=true,
 )
@@ -98,6 +117,57 @@ function test_measure(
             end
         end
     end
+end
+
+#=
+  Predicates behind the conditional `check_*` defaults above. They ask what the
+  measure *is*, so that adding a discrete or multivariate measure does not require
+  editing every `test_measure` call site.
+=#
+
+#=
+  `test_normalization` and the integral check in `test_cdf` both call `quadgk`
+  between `minimum(support(d))` and `maximum(support(d))`. That is a Lebesgue
+  integral over an interval: it needs a continuous univariate measure whose support
+  has real endpoints.
+=#
+function _can_integrate(d)
+    d isa ContinuousMeasure || return false
+    d isa UnivariateMeasure || return false
+    s = support(d)
+    return hasmethod(minimum, Tuple{typeof(s)}) && hasmethod(maximum, Tuple{typeof(s)})
+end
+
+#=
+  Whether `f` has a method that genuinely dispatches on `d`.
+
+  `hasmethod` alone is not enough for the moments. `Statistics.mean`, `var` and
+  `std` all carry generic *iterator* methods whose argument type is `Any`, so
+  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written,
+  including one that defines no moments at all, which would then fail inside
+  `test_moments` rather than skipping it. Requiring the resolved method to be
+  narrower than `Any` distinguishes "implements mean" from "is a value, and mean
+  accepts values".
+=#
+function _dispatches_on(f, argtypes::Tuple)
+    D = Tuple{argtypes...}
+    hasmethod(f, D) || return false
+    sig = which(f, D).sig
+    params = Base.unwrap_unionall(sig).parameters
+    # params[1] is the function's own type; params[2] is the first real argument.
+    return length(params) >= 2 && params[2] !== Any
+end
+
+#=
+  `cdf` and the moments are the optional half of `MeasureInterface`. Probe with
+  `eltype(d)` rather than a drawn value: this runs while building default kwargs,
+  and must not depend on `rand` having been called.
+=#
+_has_cdf(d) = _dispatches_on(cdf, (typeof(d), eltype(d)))
+
+function _has_moments(d)
+    D = (typeof(d),)
+    return _dispatches_on(mean, D) && _dispatches_on(var, D) && _dispatches_on(std, D)
 end
 
 "Evaluation points spanning the bulk and both tails of `d`."
@@ -264,11 +334,17 @@ function test_cdf(d, xs)
         @test abs(cdf(dbig, quantile(dbig, p)) - p) < 1e-60
     end
 
-    # cdf must be the integral of the density.
-    lo = minimum(support(d))
-    x = float(quantile(d, 0.3))
-    integral, _ = quadgk(t -> densityof(d, t), lo, x; rtol=1e-10)
-    @test integral ≈ cdf(d, x) rtol = 1e-6
+    #=
+      cdf must be the integral of the density, but only where that sentence is true.
+      For a discrete measure the cdf is a sum, so guard this on the same predicate
+      that gates `test_normalization` rather than assuming continuity here.
+    =#
+    if _can_integrate(d)
+        lo = minimum(support(d))
+        x = float(quantile(d, 0.3))
+        integral, _ = quadgk(t -> densityof(d, t), lo, x; rtol=1e-10)
+        @test integral ≈ cdf(d, x) rtol = 1e-6
+    end
 end
 
 function test_moments(d, nsamples)
@@ -335,11 +411,21 @@ function test_gpu(d, xs)
 
     #=
       `allowscalar` only takes a do-block for *permitting* scalar indexing; to forbid
-      it you set the task-local flag. Leaving it off for the rest of the process is
-      the behaviour we want anyway.
+      it you set the task-local flag directly. Save and restore it around the
+      broadcast: this is the caller's task state, not ours to leave flipped once the
+      suite returns. The idiom mirrors GPUArraysCore's own `@allowscalar`.
     =#
-    allowscalar(false)
-    got = Array(logdensityof.(d32, JLArray(x32)))
-    @test got ≈ expected
-    @test eltype(got) === Float32
+    saved = get(task_local_storage(), :ScalarIndexing, nothing)
+    task_local_storage(:ScalarIndexing, GPUArraysCore.ScalarDisallowed)
+    try
+        got = Array(logdensityof.(d32, JLArray(x32)))
+        @test got ≈ expected
+        @test eltype(got) === Float32
+    finally
+        if saved === nothing
+            delete!(task_local_storage(), :ScalarIndexing)
+        else
+            task_local_storage(:ScalarIndexing, saved)
+        end
+    end
 end

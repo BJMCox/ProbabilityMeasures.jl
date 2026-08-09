@@ -10,11 +10,10 @@ and this project adheres to [Semantic Versioning].
 ### Added
 
 - `AbstractProbabilityMeasure{F,S}` and the normalized-only measure interface:
-  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`,
-  `reference`, and the moment/distribution-function surface.
-- `Lebesgue` and `Counting` reference measures, derived automatically from the
-  `ValueSupport` type parameter.
-- `RealLine`, `PositiveReals`, `UnitInterval` and `RealInterval` supports.
+  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, and the
+  moment/distribution-function surface.
+- The `RealLine` support. `PositiveReals`, `UnitInterval` and `RealInterval` will
+  arrive with the first measure that needs one.
 - `Normal(μ, σ)`, with heterogeneous parameter types and no promotion or
   validation at construction.
 - `libs/ProbabilityMeasuresTest`: a reusable conformance suite (`test_measure`)

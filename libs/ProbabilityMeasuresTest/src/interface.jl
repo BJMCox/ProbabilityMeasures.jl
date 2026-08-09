@@ -28,8 +28,6 @@ testpoint(d, i::Int=1) = rand(Xoshiro(i), d)
             "params(d) is a NamedTuple" => d -> params(d) isa NamedTuple,
             "params(d) names the fields" => d -> keys(params(d)) === fieldnames(typeof(d)),
         ),
-        reference="reference(d) is a ReferenceMeasure" =>
-            d -> reference(d) isa ReferenceMeasure,
         checkparams="checkparams(d) is a Bool" => d -> checkparams(d) isa Bool,
         broadcast="d broadcasts as a scalar" =>
             d -> length(logdensityof.(d, [testpoint(d, 1), testpoint(d, 2)])) == 2,

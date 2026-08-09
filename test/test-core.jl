@@ -17,16 +17,6 @@ using Test
     @test !(d isa DiscreteMeasure)
 end
 
-@testset "reference defaults from ValueSupport" begin
-    #=
-      No measure should ever have to write a `reference` method; it falls out of the
-      ValueSupport type parameter.
-    =#
-    @test reference(Normal(0.0, 1.0)) === Lebesgue()
-    @test Lebesgue() isa ReferenceMeasure
-    @test Counting() isa ReferenceMeasure
-end
-
 @testset "support" begin
     @test support(Normal(0.0, 1.0)) === RealLine()
     @test insupport(Normal(0.0, 1.0), 0.0)
