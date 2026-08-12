@@ -38,7 +38,7 @@ end
     @test logt(1.0) == 0.0
     @test logt(-1.0f0) isa Float32
 
-    # Base throws here; that is the behaviour being replaced.
+    # Base throws on the same input.
     @test_throws DomainError log(-1.0)
 end
 
@@ -49,7 +49,7 @@ end
     @test basefloat(Int) === Float64
     @test basefloat(Bool) === Float64
 
-    # The ForwardDiff extension is what makes reparameterized sampling work.
+    # Reparameterized sampling relies on the ForwardDiff extension.
     @test basefloat(ForwardDiff.Dual{Nothing,Float32,1}) === Float32
     @test noisetype(Normal(ForwardDiff.Dual(0.0, 1.0), 1.0)) === Float64
     @test noisetype(Normal(0.0f0, 1.0f0)) === Float32

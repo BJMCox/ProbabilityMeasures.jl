@@ -26,23 +26,21 @@ include("core/interface.jl")
 include("univariate/continuous/normal.jl")
 
 #=
-  Every exported name is one a PPL is expected to call. That is a constraint rather
-  than an aesthetic choice: adding an export later is a non-breaking change,
-  removing one is not, so anything speculative costs more to ship now than to
-  withhold.
+  Every exported name is one a PPL is expected to call. Adding an export later is a
+  non-breaking change and removing one is not, so a speculative export costs more to
+  ship now than to withhold.
 
   Absent for now, and easy to add when something needs them: `mode`, `skewness`,
-  `kurtosis`, `mgf`, `cf` (Distributions.jl inheritance, not inference);
+  `kurtosis`, `mgf`, `cf` (Distributions.jl inheritance, not things inference calls);
   `Matrixvariate`; `PositiveReals`/`UnitInterval`/`RealInterval` (no measure uses
   them yet); `variateform`/`valuesupport` (the type parameters are already there).
 
-  Also absent: a `reference`/`Lebesgue`/`Counting` trait. Its only stated purpose
-  was to anchor a change of variables, and the transform layer that would perform
-  one does not exist yet. For a measure that is normalized by construction, the
-  reference is a total function of the `ValueSupport` parameter and so carries no
-  information the type does not already have. When linking does arrive it will need
-  a log-Jacobian, not the name of a base measure, so the right shape is better
-  decided then than guessed at now.
+  Also absent: a `reference`/`Lebesgue`/`Counting` trait. Its only stated purpose was
+  to anchor a change of variables, and the transform layer that would perform one does
+  not exist yet. For a measure that is normalized by construction, the reference is a
+  total function of the `ValueSupport` parameter and so carries no information the type
+  does not already have. Linking will need a log-Jacobian, not the name of a base
+  measure, so its shape is better settled when it arrives.
 =#
 
 # Core types

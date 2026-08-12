@@ -24,6 +24,14 @@ StatsAPI = "82ae8749-77ed-4fe6-ae5f-f523153014b0"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
+# Weak, not a plain dep: Reactant brings Enzyme and the XLA runtime, which is a lot
+# to install for one block of the suite. See `test_reactant`.
+[weakdeps]
+Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
+
+[extensions]
+ProbabilityMeasuresTestReactantExt = "Reactant"
+
 [compat]
 AllocCheck = "0.2.6"
 ConstructionBase = "1.6.0"
@@ -38,6 +46,7 @@ JLArrays = "0.3.1"
 Mooncake = "0.5.44"
 QuadGK = "2.11.3"
 Random = "1"
+Reactant = "0.2.278"
 ReverseDiff = "1.17.0"
 Statistics = "1"
 StatsAPI = "1.8.0"

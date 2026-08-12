@@ -16,8 +16,8 @@ const UNIVARIATE_OPTIONALS = (:cdf, :quantile, :mean, :var, :std, :median, :entr
 ]
 
 #=
-  Hooks used by `test_totality` and `test_genericity`. Both an invalid scale (NaN)
-  and a non-finite location (-Inf) are covered, since they fail differently.
+  Hooks used by `test_totality` and `test_genericity`. Invalid scales (negative and
+  zero) and a non-finite location are both covered, since they fail differently.
 =#
 _invalids(::Normal) = (Normal(0.0, -1.0), Normal(0.0, 0.0), Normal(Inf, 1.0))
 _exactparams(::Normal) = Normal(0, 1)

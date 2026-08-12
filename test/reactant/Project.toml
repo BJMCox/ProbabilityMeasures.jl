@@ -1,0 +1,17 @@
+[deps]
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+ProbabilityMeasures = "d96443b0-2461-4412-bb6f-797ac5201ef9"
+ProbabilityMeasuresTest = "8c1f4a3e-27bd-4b0a-9f4d-6e2b1c5a7d90"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+ProbabilityMeasures = {path = "../.."}
+ProbabilityMeasuresTest = {path = "../../libs/ProbabilityMeasuresTest"}
+
+[compat]
+Enzyme = "0.13.199"
+Random = "1"
+Reactant = "0.2.278"
+Test = "1"

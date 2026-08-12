@@ -5,8 +5,8 @@ Trait describing the shape of a single draw from a measure: [`Univariate`](@ref)
 [`Multivariate`](@ref).
 
 There is no `Matrixvariate`. Adding a variate form later is a non-breaking change,
-while shipping one that nothing implements is a guess a downstream PPL then has to
-keep working.
+whereas shipping one that nothing implements leaves a downstream PPL supporting a
+guess.
 """
 abstract type VariateForm end
 
@@ -62,11 +62,20 @@ these, and they must hold:
     `IrrationalConstants` or `oftype`. The result type is
     `float(promote_type(<parameter types>..., typeof(x)))`.
  2. **Totality.** `logdensityof` never throws. Outside the support, and for invalid
-    parameters, it returns a correctly-typed non-finite value (`-Inf` or `NaN`),
-    which is what makes it callable from inside a GPU kernel. Which non-finite value
-    you get is not part of the contract; use [`checkparams`](@ref) rather than
-    `isnan` to detect invalid parameters.
+    parameters, it returns a correctly-typed non-finite value (`-Inf` or `NaN`), so it
+    can be called from inside a GPU kernel. Which non-finite value comes back is not
+    part of the contract; use [`checkparams`](@ref) rather than `isnan` to detect
+    invalid parameters.
  3. **No validation in constructors.** See [`checkparams`](@ref).
+ 4. **Parameters and arguments are bounded by `Number`, not `Real`.** The measures
+    here are real-valued, but several of the wrapper types they must accept are only
+    `<:Number`: Reactant's `TracedRNumber` is the current example. A `<:Real` bound
+    would make those measures unconstructible, and no extension can widen a bound
+    after the fact. Nothing checks that a parameter is really real, which is
+    consistent with invariant 3.
+ 5. **No branching on a value.** A comparison between traced values is itself traced
+    and cannot drive `?:`, `&&` or `||`. Use `&`/`|` for predicates and
+    `ProbabilityMeasures.select` for a two-way branch, whose arms must both be total.
 """
 abstract type AbstractProbabilityMeasure{F<:VariateForm,S<:ValueSupport} end
 
@@ -74,13 +83,13 @@ abstract type AbstractProbabilityMeasure{F<:VariateForm,S<:ValueSupport} end
   Dispatch aliases. `AbstractProbabilityMeasure` is 28 characters, which pushes most
   `<:` clauses past the 92-column margin.
 
-  Only `ContinuousUnivariateMeasure` is exported; it is what you subtype to write a
-  measure. The other three back the fallbacks in `interface.jl`, and are reachable as
-  `ProbabilityMeasures.UnivariateMeasure` if you need them.
+  Only `ContinuousUnivariateMeasure` is exported; it is the supertype for a new
+  measure. The other three back the fallbacks in `interface.jl` and remain reachable
+  as `ProbabilityMeasures.UnivariateMeasure`.
 
   There is no `variateform`/`valuesupport` accessor pair either: the parameters are
   already on the type, and `d isa ContinuousMeasure` reads better than
-  `valuesupport(d) === Continuous` at every call site that would have used it.
+  `valuesupport(d) === Continuous`.
 =#
 const UnivariateMeasure{S} = AbstractProbabilityMeasure{Univariate,S}
 const ContinuousMeasure{F} = AbstractProbabilityMeasure{F,Continuous}
@@ -88,9 +97,9 @@ const DiscreteMeasure{F} = AbstractProbabilityMeasure{F,Discrete}
 const ContinuousUnivariateMeasure = AbstractProbabilityMeasure{Univariate,Continuous}
 
 #=
-  This single line is the whole batching story for univariate measures. Measures hold
-  scalar, `isbits` parameters, so `logdensityof.(d, xs)` over a device array captures
-  `d` by value and fuses into one kernel: no wrapper type, no shape algebra, no
-  separate batched code path.
+  This one line covers batching for univariate measures. Measures hold scalar,
+  `isbits` parameters, so `logdensityof.(d, xs)` over a device array captures `d` by
+  value and fuses into one kernel, with no wrapper type and no separate batched code
+  path.
 =#
 Base.broadcastable(d::AbstractProbabilityMeasure) = Ref(d)

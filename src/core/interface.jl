@@ -82,10 +82,9 @@ Base.rand(d::AbstractProbabilityMeasure) = rand(Random.default_rng(), d)
   from Statistics. `entropy` is the only new name, and it is here because it appears
   in every ELBO.
 
-  `mode`, `skewness`, `kurtosis`, `mgf` and `cf` are absent. They are
-  Distributions.jl inheritance rather than things a PPL calls, and each name this
-  package exports is one a downstream PPL then depends on: adding an export later is
-  non-breaking, removing one is not.
+  `mode`, `skewness`, `kurtosis`, `mgf` and `cf` are absent: they are Distributions.jl
+  inheritance, not things a PPL calls, and an export is easier to add later than to
+  take away.
 =#
 
 """

@@ -6,14 +6,14 @@ using Random: Random, Xoshiro
 using Test
 
 #=
-  The conformance suite is the real test: interface, totality, type genericity, type
-  stability, zero allocations, normalization, cdf/quantile, moments, four AD
-  backends, and GPU-shaped broadcast. Run it across parameter types and signs.
+  The conformance suite covers interface, totality, type genericity, type stability,
+  zero allocations, normalization, cdf/quantile, moments, four AD backends, and
+  GPU-shaped broadcast. Run it across parameter types and signs.
 =#
 @testset "conformance" begin
     #=
-      Numerics are pinned against Distributions.jl, which is a test-only reference
-      here and not a dependency of the package.
+      Numerics are pinned against Distributions.jl. It is a test-only reference; the
+      package itself does not depend on it.
     =#
     reference_logpdf(m, x) = Distributions.logpdf(Distributions.Normal(m.μ, m.σ), x)
     for d in (Normal(0.0, 1.0), Normal(-2.5, 0.5), Normal(3.0f0, 2.0f0), Normal(0, 1))
@@ -27,10 +27,7 @@ end
     @test typeof(Normal(0.0f0, 1)) === Normal{Float32,Int}
     @test typeof(Normal(0.0f0, 1.0)) === Normal{Float32,Float64}
 
-    #=
-      The failure this package exists to prevent: a Float32 parameter meeting a
-      Float64 literal and silently widening.
-    =#
+    # A Float32 parameter meeting a Float64 literal must not silently widen.
     @test Normal(0.0f0, 1.0f0).σ isa Float32
 end
 
@@ -40,8 +37,8 @@ end
     @test logdensityof(Normal(0, 1), big"1.0") isa BigFloat
 
     #=
-      And the BigFloat result must be accurate to BigFloat precision, which only
-      holds because log2π is an Irrational and σ is converted before `log`.
+      The BigFloat result must also be accurate to BigFloat precision. That holds
+      because log2π is an Irrational and σ is converted before `log`.
     =#
     exact = logdensityof(Normal(0, 1), big"1.0")
     full = logdensityof(Normal(big"0.0", big"1.0"), big"1.0")

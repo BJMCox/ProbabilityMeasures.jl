@@ -37,7 +37,7 @@ samplers, transforms, and validation.
 """
 insupport(d::AbstractProbabilityMeasure, x) = insupport(support(d), x)
 
-insupport(::RealLine, x::Real) = isfinite(x)
+insupport(::RealLine, x::Number) = isfinite(x)
 
 Base.minimum(::RealLine) = -Inf
 Base.maximum(::RealLine) = Inf

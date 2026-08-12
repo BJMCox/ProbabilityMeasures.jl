@@ -1,8 +1,7 @@
 #=
   The conformance suite. `test_measure` is the single entry point: every measure in
-  the package must pass it, and it is the mechanism by which the type-genericity,
-  allocation, AD and GPU claims in the README are enforced rather than merely
-  asserted.
+  the package must pass it, and it is where the type-genericity, allocation, AD and
+  GPU claims in the README get checked.
 =#
 
 """
@@ -10,9 +9,9 @@
 
 The AD backends exercised by [`test_measure`](@ref) by default.
 
-Enzyme is absent: it is a heavy dependency whose Windows support is uneven, and a
-conformance suite that cannot run everywhere is not much of a conformance suite. Pass
-it explicitly via `ad_backends` to include it.
+Enzyme is absent: it is a heavy dependency and its Windows support is uneven, so the
+suite would no longer run everywhere. Pass it explicitly via `ad_backends` to include
+it.
 """
 function default_ad_backends()
     return (
@@ -25,9 +24,8 @@ _reconstruct(d, p) = constructorof(typeof(d))(p...)
 
 #=
   The parameters of `d` as a flat vector, promoted to a common *floating-point*
-  type. The `float` matters: a measure may legitimately carry integer parameters,
-  but you cannot perturb an `Int` by a finite-difference step, and AD cannot track
-  one either.
+  type. The `float` matters: a measure may carry integer parameters, and an `Int`
+  can neither be perturbed by a finite-difference step nor tracked by AD.
 =#
 _paramvec(d) = collect(promote(map(float, values(params(d)))...))
 
@@ -45,7 +43,7 @@ is "done" when this passes.
 # Keywords
 
   - `name::AbstractString`: the testset name. Defaults to the type name of `d`.
-  - `xs`: evaluation points. Defaults to a spread of quantiles plus the mean.
+  - `xs`: evaluation points. Defaults to quantiles spanning the bulk and both tails.
   - `types`: the floating-point types swept for genericity.
   - `ad_backends`: see [`default_ad_backends`](@ref).
   - `reference_logpdf`: an optional `(d, x) -> Real` to check numerics against, for
@@ -56,21 +54,21 @@ is "done" when this passes.
 # Which blocks run by default
 
 The blocks that hold for *every* measure (interface conformance, totality, type
-genericity, type stability, allocations, AD, GPU broadcast) default to on and are the
-actual invariants; switching one off is an admission that the measure does not
-conform.
+genericity, type stability, allocations, AD, GPU broadcast) default to on. A measure
+that needs one of them switched off does not conform.
 
-The rest are conditional on what the measure is, and are derived from it rather than
-defaulted to `true`:
+The rest depend on what the measure is, so their defaults are derived from it:
 
   - `check_normalization` integrates the density with `quadgk`, which is only
     meaningful for a continuous univariate measure. A discrete measure would need a
     sum over its support instead, and nothing here can enumerate one yet.
   - `check_cdf` and `check_moments` cover the *optional* half of `MeasureInterface`,
     so they run only when the measure actually defines those methods.
+  - `check_reactant` needs Reactant, a weak dependency here because it brings Enzyme
+    and the XLA runtime with it. It runs when the extension has loaded.
 
-Deriving these keeps the flags from quietly encoding "continuous and univariate" as
-though it were universal. The first discrete measure should not have to pass three
+Deriving them keeps the defaults from encoding "continuous and univariate" as though
+it held for every measure, so the first discrete measure will not have to pass three
 `false`s to get a meaningful run.
 """
 function test_measure(
@@ -91,6 +89,7 @@ function test_measure(
     check_moments::Bool=_has_moments(d),
     check_ad::Bool=true,
     check_gpu::Bool=true,
+    check_reactant::Bool=_reactant_loaded(),
 )
     @testset "$name" begin
         check_interface && @testset "interface" begin
@@ -109,6 +108,7 @@ function test_measure(
         check_moments && @testset "moments" test_moments(d, nsamples)
         check_ad && @testset "automatic differentiation" test_ad(d, xs, ad_backends)
         check_gpu && @testset "GPU broadcast" test_gpu(d, xs)
+        check_reactant && @testset "Reactant" test_reactant(d, xs)
         if reference_logpdf !== nothing
             @testset "reference numerics" begin
                 for x in xs
@@ -143,11 +143,11 @@ end
 
   `hasmethod` alone is not enough for the moments. `Statistics.mean`, `var` and
   `std` all carry generic *iterator* methods whose argument type is `Any`, so
-  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written,
-  including one that defines no moments at all, which would then fail inside
-  `test_moments` rather than skipping it. Requiring the resolved method to be
-  narrower than `Any` distinguishes "implements mean" from "is a value, and mean
-  accepts values".
+  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written, even
+  one that defines no moments at all. Requiring the resolved method to be narrower
+  than `Any` distinguishes "implements mean" from "is a value, and mean accepts
+  values", so a measure without moments skips `test_moments` instead of failing
+  inside it.
 =#
 function _dispatches_on(f, argtypes::Tuple)
     D = Tuple{argtypes...}
@@ -194,10 +194,10 @@ function test_totality(d, xs)
       Invalid parameters produce a non-finite value rather than an error, and
       construction itself never complains.
 
-      Not `isnan`: which non-finite value you get is not part of the contract.
+      Not `isnan`: which non-finite value comes back is not part of the contract.
       `Normal(Inf, 1.0)` is invalid but has a log-density of -Inf, and pinning the
-      suite to NaN would push callers toward `isnan` as a validity sentinel, which
-      silently accepts exactly that case.
+      suite to NaN would push callers toward `isnan` as a validity sentinel. That
+      sentinel silently accepts exactly this case.
     =#
     for bad in _invalids(d)
         @test !checkparams(bad)
@@ -270,8 +270,8 @@ end
 
 function test_allocations(d, xs)
     #=
-      AllocCheck proves this statically over the whole call graph, which is far
-      stronger than timing `@allocated` and hoping the benchmark was warm.
+      AllocCheck proves this statically over the whole call graph. `@allocated` would
+      only report on the one call it timed, and only if it was warm.
     =#
     @test isempty(check_allocs(logdensityof, (typeof(d), typeof(first(xs)))))
     @test isempty(check_allocs(rand, (Xoshiro, typeof(d))))
@@ -300,8 +300,8 @@ function test_cdf(d, xs)
     end
 
     #=
-      The whole point of `logcdf` over `log(cdf(...))`: `cdf` underflows to zero far
-      out in the tail, where the log-scale value is still perfectly finite.
+      `logcdf` exists because `cdf` underflows to zero far out in the tail, where the
+      log-scale value is still finite.
     =#
     deep = float(quantile(d, 1e-300))
     if isfinite(deep)
@@ -335,9 +335,9 @@ function test_cdf(d, xs)
     end
 
     #=
-      cdf must be the integral of the density, but only where that sentence is true.
-      For a discrete measure the cdf is a sum, so guard this on the same predicate
-      that gates `test_normalization` rather than assuming continuity here.
+      cdf is the integral of the density for a continuous measure; for a discrete one
+      it is a sum. Guard the check on the same predicate that gates
+      `test_normalization`.
     =#
     if _can_integrate(d)
         lo = minimum(support(d))
@@ -376,7 +376,7 @@ function test_ad(d, xs, backends)
 
     #=
       Sampling is written in reparameterized form, so the pathwise derivative must
-      exist and be exact. This is what a VI backend in the PPL relies on.
+      exist and be exact. A VI backend in the PPL relies on it.
     =#
     @testset "reparameterized rand" test_reparameterization(d)
 end
@@ -410,10 +410,10 @@ function test_gpu(d, xs)
     @test isbits(d32)  # a non-isbits measure cannot be captured by a kernel
 
     #=
-      `allowscalar` only takes a do-block for *permitting* scalar indexing; to forbid
-      it you set the task-local flag directly. Save and restore it around the
-      broadcast: this is the caller's task state, not ours to leave flipped once the
-      suite returns. The idiom mirrors GPUArraysCore's own `@allowscalar`.
+      `allowscalar` only takes a do-block for *permitting* scalar indexing; forbidding
+      it means setting the task-local flag directly. The flag is the caller's task
+      state, so save and restore it around the broadcast instead of leaving it flipped
+      once the suite returns. The idiom mirrors GPUArraysCore's own `@allowscalar`.
     =#
     saved = get(task_local_storage(), :ScalarIndexing, nothing)
     task_local_storage(:ScalarIndexing, GPUArraysCore.ScalarDisallowed)
@@ -428,4 +428,27 @@ function test_gpu(d, xs)
             task_local_storage(:ScalarIndexing, saved)
         end
     end
+end
+
+# Reactant.
+
+"""
+    test_reactant(d, xs)
+
+Check that `d` traces and compiles under Reactant, with the parameters traced as well
+as the data.
+
+The method lives in `ext/ProbabilityMeasuresTestReactantExt.jl`. Reactant is a weak
+dependency because it brings Enzyme and the XLA runtime with it, a large install for a
+suite whose other blocks have no use for them. [`test_measure`](@ref) runs this block
+when the extension has loaded and skips it otherwise. Pass `check_reactant=true` to
+make its absence an error.
+"""
+function test_reactant(::Any, ::Any)
+    return error("test_reactant needs Reactant. Run `using Reactant` first.")
+end
+
+"Whether the Reactant extension of this package has loaded."
+function _reactant_loaded()
+    return Base.get_extension(@__MODULE__, :ProbabilityMeasuresTestReactantExt) !== nothing
 end

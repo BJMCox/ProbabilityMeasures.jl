@@ -97,7 +97,7 @@ Points to keep:
 - Section headers are `#`-level: `# Arguments`, `# Keywords`, `# Returns`, and
   `# Examples` where a doctest helps.
 - Refer to other docstrings with `` [`name`](@ref) ``.
-- Mark up identifiers with backticks and math with ` ```math ` blocks or `` `` ``
+- Mark up identifiers with backticks and math with ` ```math ` blocks or ```` ``
   inline LaTeX.
 
 Not every docstring needs every section. A two-argument function whose arguments are

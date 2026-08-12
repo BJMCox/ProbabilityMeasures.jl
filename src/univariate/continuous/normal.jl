@@ -13,8 +13,11 @@ with respect to Lebesgue measure. `Normal()` gives the standard normal in `Float
 
 # Arguments
 
-  - `μ::Real`: the mean.
-  - `σ::Real`: the standard deviation.
+  - `μ::Number`: the mean.
+  - `σ::Number`: the standard deviation.
+
+The bound is `Number` rather than `Real` so that a wrapper type standing in for a
+real number fits: see [`AbstractProbabilityMeasure`](@ref).
 
 # Examples
 
@@ -43,16 +46,16 @@ checkparams(Normal(0.0, -1.0))               # false
 isnan(logdensityof(Normal(0.0, -1.0), 0.0))  # true
 ```
 """
-struct Normal{M<:Real,S<:Real} <: ContinuousUnivariateMeasure
+struct Normal{M<:Number,S<:Number} <: ContinuousUnivariateMeasure
     μ::M
     σ::S
 end
 
 #=
   There is no outer constructor here. Julia's auto-generated
-  `Normal(μ::M, σ::S) where {M,S}` already keeps both types intact; it is
-  `Normal(μ, σ) = Normal(promote(μ, σ)...)` that takes extra code to write, not the
-  generic version. Argument checking is likewise absent, see `checkparams`.
+  `Normal(μ::M, σ::S) where {M,S}` already keeps both types intact; promoting the
+  parameters would take an extra method to write. Argument checking is likewise absent,
+  see `checkparams`.
 =#
 
 # `Float64` here is a default, not a constraint. Write `Normal(0.0f0, 1.0f0)` for Float32.
@@ -60,7 +63,11 @@ Normal() = Normal(0.0, 1.0)
 
 Base.eltype(::Type{Normal{M,S}}) where {M,S} = float(promote_type(M, S))
 
-checkparams(d::Normal) = isfinite(d.μ) && d.σ > zero(d.σ)
+#=
+  `&`, not `&&`: short-circuiting needs a native `Bool`, and a traced comparison is
+  not one. Both operands are cheap, so nothing is lost.
+=#
+checkparams(d::Normal) = isfinite(d.μ) & (d.σ > zero(d.σ))
 
 support(::Normal) = RealLine()
 
@@ -69,23 +76,23 @@ support(::Normal) = RealLine()
 
 The standardized value ``(x - \\mu)/\\sigma``.
 """
-@inline zval(d::Normal, x::Real) = (x - d.μ) / d.σ
+@inline zval(d::Normal, x::Number) = (x - d.μ) / d.σ
 
 """
     xval(d::Normal, z)
 
 The inverse of [`zval`](@ref): ``\\mu + \\sigma z``.
 """
-@inline xval(d::Normal, z::Real) = muladd(d.σ, z, d.μ)
+@inline xval(d::Normal, z::Number) = muladd(d.σ, z, d.μ)
 
-@inline function DensityInterface.logdensityof(d::Normal, x::Real)
+@inline function DensityInterface.logdensityof(d::Normal, x::Number)
     z = zval(d, x)
     #=
-      `z` already carries the fully promoted type, so converting `σ` to it before
-      taking the log is what keeps precision correct for exact parameter types: with
-      `μ::BigFloat, σ::Int`, `log(σ)` alone would compute at `Float64` precision and
-      quietly cap the result. `log2π` is an `Irrational` and adopts `z`'s type (and,
-      for `BigFloat`, its current precision) on its own.
+      `z` already carries the fully promoted type, so `σ` is converted to it before the
+      log. Exact parameter types need this: with `μ::BigFloat, σ::Int`, `log(σ)` alone
+      would compute at `Float64` precision and cap the result there. `log2π` is an
+      `Irrational` and adopts `z`'s type (and, for `BigFloat`, its current precision)
+      on its own.
     =#
     σ = oftype(z, d.σ)
     return -(z^2 + log2π) / 2 - logt(σ)
@@ -104,10 +111,10 @@ Statistics.mean(d::Normal) = d.μ
 Statistics.var(d::Normal) = d.σ^2
 
 #=
-  `abs` rather than a bare `d.σ`: for an invalid negative scale the two would
-  disagree with `var`, and anything using `std` as a proposal width or a tolerance
-  would get a negative number. `abs` is exact, type-preserving, and identical to
-  `sqrt(var(d))` for every valid scale.
+  `abs` rather than a bare `d.σ`: for an invalid negative scale the bare field would
+  disagree with `var` and hand a negative number to anything using `std` as a proposal
+  width or a tolerance. `abs` is exact, type-preserving, and agrees with `sqrt(var(d))`
+  for every valid scale.
 =#
 Statistics.std(d::Normal) = abs(d.σ)
 
@@ -119,29 +126,41 @@ function entropy(d::Normal)
     return (log2π + one(σ)) / 2 + logt(σ)
 end
 
-cdf(d::Normal, x::Real) = erfc(-zval(d, x) * invsqrt2) / 2
-ccdf(d::Normal, x::Real) = erfc(zval(d, x) * invsqrt2) / 2
+cdf(d::Normal, x::Number) = erfc(-zval(d, x) * invsqrt2) / 2
+ccdf(d::Normal, x::Number) = erfc(zval(d, x) * invsqrt2) / 2
 
 #=
-  Both tails need care, and they need different care.
+  The two tails need different treatment.
 
-  Far below the mean, `cdf` underflows to zero and `log(cdf(...))` returns `-Inf`
-  where the true value is merely large and negative; `logerfc` computes it directly.
-  Far above the mean the opposite happens: `cdf` rounds to exactly one and the log
+  Far below the mean, `cdf` underflows to zero and `log(cdf(...))` returns `-Inf` where
+  the true value is merely large and negative; `logerfc` computes it directly. Far
+  above the mean the opposite happens: `cdf` rounds to exactly one and the log
   collapses to `0.0`, destroying every significant digit of a value that is small but
   nonzero. There `log1p(-ccdf)` keeps full relative accuracy.
 
-  A PPL walks into both regimes constantly, since censored likelihoods and
-  truncations evaluate `logcdf` precisely where the mass runs out.
+  Censored likelihoods and truncations evaluate `logcdf` right where the mass runs out,
+  so a PPL walks into both regimes constantly.
+
+  `select` rather than `?:` so that the pair survives tracing. Both arms are total over
+  the whole line, so evaluating both is harmless: the arm that is wrong for a given `z`
+  is inaccurate, never undefined.
 =#
-function logcdf(d::Normal, x::Real)
+function logcdf(d::Normal, x::Number)
     z = zval(d, x)
-    return z < zero(z) ? logerfc(-z * invsqrt2) - logtwo : log1p(-erfc(z * invsqrt2) / 2)
+    return select(
+        z < zero(z),
+        () -> logerfc(-z * invsqrt2) - logtwo,
+        () -> log1p(-erfc(z * invsqrt2) / 2),
+    )
 end
 
-function logccdf(d::Normal, x::Real)
+function logccdf(d::Normal, x::Number)
     z = zval(d, x)
-    return z > zero(z) ? logerfc(z * invsqrt2) - logtwo : log1p(-erfc(-z * invsqrt2) / 2)
+    return select(
+        z > zero(z),
+        () -> logerfc(z * invsqrt2) - logtwo,
+        () -> log1p(-erfc(-z * invsqrt2) / 2),
+    )
 end
 
 #=
@@ -152,7 +171,7 @@ end
   of this file depends on. Negating last keeps `sqrt2` a binary operand, so it adopts
   the argument's type and (for BigFloat) its precision.
 =#
-Statistics.quantile(d::Normal, p::Real) = xval(d, -(sqrt2 * erfcinv(2 * p)))
+Statistics.quantile(d::Normal, p::Number) = xval(d, -(sqrt2 * erfcinv(2 * p)))
 
 function Base.show(io::IO, d::Normal)
     return print(io, "Normal(μ=", d.μ, ", σ=", d.σ, ")")

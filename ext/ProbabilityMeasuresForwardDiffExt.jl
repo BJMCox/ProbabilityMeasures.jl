@@ -4,10 +4,10 @@ using ForwardDiff: Dual
 using ProbabilityMeasures: ProbabilityMeasures
 
 #=
-  Without this, `rand(rng, Normal(dual_μ, dual_σ))` would try to draw the underlying
-  standard normal *in the dual type*, which is both meaningless and unsupported. The
-  randomness belongs in the plain float type; the duals enter through `μ + σ * z`,
-  which is the reparameterization that makes the draw differentiable.
+  Without this, `rand(rng, Normal(dual_μ, dual_σ))` would draw the underlying standard
+  normal in the dual type, which ForwardDiff does not support. The noise is drawn in the
+  plain float type and the duals enter through the reparameterization `μ + σ * z`, so the
+  draw stays differentiable in the parameters.
 =#
 function ProbabilityMeasures.basefloat(::Type{<:Dual{T,V,N}}) where {T,V,N}
     return ProbabilityMeasures.basefloat(V)
