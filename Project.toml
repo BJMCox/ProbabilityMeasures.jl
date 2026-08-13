@@ -18,11 +18,13 @@ StatsAPI = "82ae8749-77ed-4fe6-ae5f-f523153014b0"
 EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
+ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 
 [extensions]
 ProbabilityMeasuresEnzymeCoreExt = "EnzymeCore"
 ProbabilityMeasuresForwardDiffExt = "ForwardDiff"
 ProbabilityMeasuresReactantExt = "Reactant"
+ProbabilityMeasuresReverseDiffExt = "ReverseDiff"
 
 [compat]
 DensityInterface = "0.4.0"
@@ -31,6 +33,7 @@ ForwardDiff = "0.10, 1"
 IrrationalConstants = "0.2.6"
 Random = "1"
 Reactant = "0.2.278"
+ReverseDiff = "1.17.0"
 SpecialFunctions = "2.4"
 Statistics = "1"
 StatsAPI = "1.8.0"

@@ -130,7 +130,14 @@ function logccdf end
 ccdf(d::UnivariateMeasure, x) = one(cdf(d, x)) - cdf(d, x)
 logcdf(d::UnivariateMeasure, x) = logt(cdf(d, x))
 logccdf(d::UnivariateMeasure, x) = logt(ccdf(d, x))
-Statistics.median(d::UnivariateMeasure) = quantile(d, 1//2)
+
+#=
+  `one(eltype(d)) / 2`, not `1//2`: a `quantile` that reaches an inverse special
+  function (`erfcinv` for `Normal`) normalizes its argument with `float`, and
+  `float(::Rational)` returns `Float64` regardless of the surrounding type. Computing
+  the half in `eltype(d)` up front keeps a BigFloat measure at BigFloat precision.
+=#
+Statistics.median(d::UnivariateMeasure) = quantile(d, one(eltype(d)) / 2)
 
 #=
   Plain `sqrt`, not a total variant: a variance is non-negative by definition (the

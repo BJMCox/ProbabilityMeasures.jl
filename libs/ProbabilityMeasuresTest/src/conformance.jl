@@ -19,8 +19,21 @@ function default_ad_backends()
     )
 end
 
+#=
+  `ntuple(..., Val(fieldcount(D)))`, not `p...`: splatting a `Vector` directly gives
+  the constructor call a runtime-unknown argument count, and inference answers with a
+  small union of guessed instantiations (e.g. `Union{Normal{Float32,Float32},
+  Normal{Float64,Float64}}`) rather than the one true return type. That union is
+  benign for ForwardDiff, Zygote and ReverseDiff, but it is enough to make Mooncake's
+  static rule-builder fail on `rand` for a measure it captures. `Val(fieldcount(D))`
+  fixes the tuple length at compile time, so the splat is as static as if it had been
+  written out by hand.
+=#
 "Rebuild `d` with parameters taken from the vector `p`."
-_reconstruct(d, p) = constructorof(typeof(d))(p...)
+function _reconstruct(d, p)
+    D = typeof(d)
+    return constructorof(D)(ntuple(i -> p[i], Val(fieldcount(D)))...)
+end
 
 #=
   The parameters of `d` as a flat vector, promoted to a common *floating-point*
@@ -309,6 +322,15 @@ function test_cdf(d, xs)
     end
 
     #=
+      `quantile` must be as total as `logdensityof`: a probability that drifts
+      slightly outside `[0, 1]`, for example from float noise in a `cdf` round-trip,
+      must not throw.
+    =#
+    for p in (-0.001, 1.001, -Inf, Inf, NaN)
+        @test (quantile(d, p); true)
+    end
+
+    #=
       The distribution function has to be as type-generic as the density is.
       Checking only `logdensityof` let a `Float64`-collapsing `quantile` through:
       `-sqrt2 * x` parses as `(-sqrt2) * x`, and negating an Irrational materializes
@@ -367,26 +389,28 @@ function test_ad(d, xs, backends)
     f = p -> logdensityof(_reconstruct(d, p), x)
     reference = FiniteDifferences.grad(central_fdm(5, 1), f, p0)[1]
 
+    #=
+      Sampling is written in reparameterized form, so the pathwise derivative must
+      exist and be exact under every backend `logdensityof` is checked under, not just
+      one: a VI backend in the PPL relies on it.
+    =#
+    draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
+    draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
+
     for backend in backends
         @testset "$(nameof(typeof(backend)))" begin
             g = DifferentiationInterface.gradient(f, backend, p0)
             @test g ≈ reference rtol = 1e-5 atol = 1e-8
+            @testset "reparameterized rand" test_reparameterization(
+                draw, p0, draw_reference, backend
+            )
         end
     end
-
-    #=
-      Sampling is written in reparameterized form, so the pathwise derivative must
-      exist and be exact. A VI backend in the PPL relies on it.
-    =#
-    @testset "reparameterized rand" test_reparameterization(d)
 end
 
-"Check that `rand` is differentiable with respect to the parameters."
-function test_reparameterization(d)
-    p0 = _paramvec(d)
-    draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
-    g = ForwardDiff.gradient(draw, p0)
-    reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
+"Check that `draw` is differentiable with respect to its parameters under `backend`."
+function test_reparameterization(draw, p0, reference, backend)
+    g = DifferentiationInterface.gradient(draw, backend, p0)
     @test g ≈ reference rtol = 1e-5 atol = 1e-8
     #=
       A zero gradient would mean the draw does not actually depend on the

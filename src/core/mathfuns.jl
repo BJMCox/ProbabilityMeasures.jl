@@ -36,6 +36,25 @@ throw, so only the negative branch needs handling.
 end
 
 """
+    erfcinvt(y)
+
+Total `erfcinv`: returns `NaN` where `erfcinv` would throw a `DomainError`.
+
+[`quantile`](@ref) must stay total (invariant 2 of
+[`AbstractProbabilityMeasure`](@ref)): a probability that drifts slightly outside
+`[0, 1]`, for example from float noise in a `cdf` round-trip, must not throw.
+"""
+@inline function erfcinvt(y::Number)
+    #=
+      `erfcinv`, like `log` in `logt`, is the arm that must stay total under tracing,
+      where both arms evaluate. On a concrete `Bool` it is only reached when `y` is
+      already in range, so the native domain check never fires.
+    =#
+    valid = (y >= zero(y)) & (y <= 2 * one(y))
+    return select(valid, () -> erfcinv(y), () -> oftype(float(y), NaN))
+end
+
+"""
     basefloat(T) -> Type{<:AbstractFloat}
 
 The plain floating-point type underlying `T`, with any AD tracking removed.

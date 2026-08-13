@@ -164,14 +164,17 @@ function logccdf(d::Normal, x::Number)
 end
 
 #=
-  The parenthesisation is load-bearing. `-sqrt2 * erfcinv(...)` parses as
-  `(-sqrt2) * erfcinv(...)`, and Base defines
+  The parenthesisation is load-bearing. `-sqrt2 * erfcinvt(...)` parses as
+  `(-sqrt2) * erfcinvt(...)`, and Base defines
   `-(x::AbstractIrrational) = -Float64(x)`, so unary minus materializes √2 at Float64
   before it ever meets the argument, throwing away the Irrational promotion the rest
   of this file depends on. Negating last keeps `sqrt2` a binary operand, so it adopts
   the argument's type and (for BigFloat) its precision.
+
+  `erfcinvt`, not `erfcinv`: `p` outside `[0, 1]` must produce `NaN`, not throw. See
+  [`erfcinvt`](@ref).
 =#
-Statistics.quantile(d::Normal, p::Number) = xval(d, -(sqrt2 * erfcinv(2 * p)))
+Statistics.quantile(d::Normal, p::Number) = xval(d, -(sqrt2 * erfcinvt(2 * p)))
 
 function Base.show(io::IO, d::Normal)
     return print(io, "Normal(μ=", d.μ, ", σ=", d.σ, ")")
