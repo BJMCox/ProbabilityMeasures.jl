@@ -10,9 +10,8 @@ DensityInterface.DensityKind(::AbstractProbabilityMeasure) = DensityInterface.Ha
 
 The parameters of `d`, keyed by field name.
 
-A `NamedTuple` rather than a positional tuple: a PPL needs to address parameters by
-name to build traces and priors, and it costs nothing at runtime. The default reads
-the fields directly, so measures rarely define this.
+The default returns the fields as a `NamedTuple`, allowing callers to address
+parameters by name.
 """
 @inline function StatsAPI.params(d::D) where {D<:AbstractProbabilityMeasure}
     # `D` is a type parameter, so this folds to constants and compiles to a struct load.
@@ -24,19 +23,14 @@ end
 
 Whether `d`'s parameters are valid, for example a positive scale.
 
-**Constructors in this package never validate.** That is a break from
-Distributions.jl for two reasons: a constructor that can `throw` cannot be called
-from inside a GPU kernel, and a PPL constructs measures in its innermost loop, where
-a branch and an error path are not free. Validation is opt-in, at the boundaries
-where a human supplied the numbers.
+Constructors in this package do not validate. Validation is explicit so construction
+can remain usable inside compiled kernels and PPL inner loops.
 
-Invalid parameters are not silently wrong. By invariant 2 of
-[`AbstractProbabilityMeasure`](@ref), `logdensityof` returns a non-finite value for
-them rather than throwing.
+For invalid parameters, `logdensityof` returns a non-finite value rather than
+throwing.
 
-Use this function as the sentinel, not `isnan(logdensityof(d, x))`. The two are not
-equivalent: `Normal(Inf, 1.0)` has invalid parameters but a log-density of `-Inf`,
-which `isnan` would wave through as a legitimate zero-density point.
+Use this function rather than `isnan(logdensityof(d, x))`: an invalid measure may
+produce `-Inf` rather than `NaN`.
 
 # Examples
 
@@ -51,10 +45,7 @@ checkparams(::AbstractProbabilityMeasure) = true
 """
     noisetype(d) -> Type{<:AbstractFloat}
 
-The plain float type in which to draw the underlying randomness for a
-reparameterized sample from `d`.
-
-See [`basefloat`](@ref) for why the AD tracking is stripped here.
+The untracked float type used to draw noise for a reparameterized sample from `d`.
 """
 @inline function noisetype(d::D) where {D<:AbstractProbabilityMeasure}
     return basefloat(_promoted_paramtype(D))
@@ -65,9 +56,8 @@ end
 end
 
 #=
-  `rand(d, n)`, `rand(rng, d, dims...)` and `rand!(A, d)` all route through Random's
-  sampler machinery. Measures implement the scalar `Base.rand(rng, d)`; this hands
-  the array forms back to it.
+  Array sampling routes through Random's sampler machinery to the scalar
+  `Base.rand(rng, d)` implementation.
 =#
 function Random.rand(
     rng::AbstractRNG, sp::Random.SamplerTrivial{<:AbstractProbabilityMeasure}
@@ -78,13 +68,8 @@ end
 Base.rand(d::AbstractProbabilityMeasure) = rand(Random.default_rng(), d)
 
 #=
-  Moments and summaries. `mean`, `var`, `std`, `median` and `quantile` are extended
-  from Statistics. `entropy` is the only new name, and it is here because it appears
-  in every ELBO.
-
-  `mode`, `skewness`, `kurtosis`, `mgf` and `cf` are absent: they are Distributions.jl
-  inheritance, not things a PPL calls, and an export is easier to add later than to
-  take away.
+  Extend Statistics for standard summaries; `entropy` is the only package-specific
+  summary currently needed by PPL workloads.
 =#
 
 """
@@ -124,23 +109,18 @@ function logcdf end
 function logccdf end
 
 #=
-  Generic fallbacks. These are correct for any measure that defines the primitive
-  they delegate to, and each is accurate over the range where the primitive is.
+  Generic fallbacks for measures that define the corresponding primitive.
 =#
 ccdf(d::UnivariateMeasure, x) = one(cdf(d, x)) - cdf(d, x)
 logcdf(d::UnivariateMeasure, x) = logt(cdf(d, x))
 logccdf(d::UnivariateMeasure, x) = logt(ccdf(d, x))
 
 #=
-  `one(eltype(d)) / 2`, not `1//2`: a `quantile` that reaches an inverse special
-  function (`erfcinv` for `Normal`) normalizes its argument with `float`, and
-  `float(::Rational)` returns `Float64` regardless of the surrounding type. Computing
-  the half in `eltype(d)` up front keeps a BigFloat measure at BigFloat precision.
+  Construct one-half in `eltype(d)`; `float(::Rational)` would force `Float64`.
 =#
 Statistics.median(d::UnivariateMeasure) = quantile(d, one(eltype(d)) / 2)
 
 #=
-  Plain `sqrt`, not a total variant: a variance is non-negative by definition (the
-  interface asserts it), so this branch cannot throw for a conforming measure.
+  A conforming measure has non-negative variance, so plain `sqrt` is total here.
 =#
 Statistics.std(d::AbstractProbabilityMeasure) = sqrt(var(d))

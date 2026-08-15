@@ -16,30 +16,26 @@ with respect to Lebesgue measure. `Normal()` gives the standard normal in `Float
   - `μ::Number`: the mean.
   - `σ::Number`: the standard deviation.
 
-The bound is `Number` rather than `Real` so that a wrapper type standing in for a
-real number fits: see [`AbstractProbabilityMeasure`](@ref).
+The `Number` bound permits numeric wrappers used by AD and tracing systems.
 
 # Examples
 
-`μ` and `σ` keep their own types. Nothing is converted at construction, so an AD dual
-entering through `μ` leaves `σ` alone:
+Construction preserves the types of `μ` and `σ`:
 
 ```julia
 typeof(Normal(ForwardDiff.Dual(0.0, 1.0), 1.0))
 # Normal{ForwardDiff.Dual{Nothing, Float64, 1}, Float64}
 ```
 
-Integer parameters do not force `Float64` either. The precision follows the argument,
-not the parameters:
+Integer parameters do not force `Float64`; precision follows the argument:
 
 ```julia
 logdensityof(Normal(0, 1), 1.0f0) isa Float32     # true
 logdensityof(Normal(0, 1), big"1.0") isa BigFloat # true
 ```
 
-Construction never validates: `Normal(0.0, -1.0)` builds without complaint. The
-density is total, so an invalid scale surfaces as `NaN` rather than a throw. See
-[`checkparams`](@ref) for why.
+Construction does not validate. Invalid parameters produce a non-finite density;
+use [`checkparams`](@ref) to validate explicitly.
 
 ```julia
 checkparams(Normal(0.0, -1.0))               # false
@@ -52,10 +48,8 @@ struct Normal{M<:Number,S<:Number} <: ContinuousUnivariateMeasure
 end
 
 #=
-  There is no outer constructor here. Julia's auto-generated
-  `Normal(μ::M, σ::S) where {M,S}` already keeps both types intact; promoting the
-  parameters would take an extra method to write. Argument checking is likewise absent,
-  see `checkparams`.
+  Julia's generated outer constructor preserves both parameter types. Validation is
+  handled by `checkparams`.
 =#
 
 # `Float64` here is a default, not a constraint. Write `Normal(0.0f0, 1.0f0)` for Float32.
@@ -64,8 +58,7 @@ Normal() = Normal(0.0, 1.0)
 Base.eltype(::Type{Normal{M,S}}) where {M,S} = float(promote_type(M, S))
 
 #=
-  `&`, not `&&`: short-circuiting needs a native `Bool`, and a traced comparison is
-  not one. Both operands are cheap, so nothing is lost.
+  Use `&` because traced comparisons cannot drive short-circuit evaluation.
 =#
 checkparams(d::Normal) = isfinite(d.μ) & (d.σ > zero(d.σ))
 
@@ -88,20 +81,16 @@ The inverse of [`zval`](@ref): ``\\mu + \\sigma z``.
 @inline function DensityInterface.logdensityof(d::Normal, x::Number)
     z = zval(d, x)
     #=
-      `z` already carries the fully promoted type, so `σ` is converted to it before the
-      log. Exact parameter types need this: with `μ::BigFloat, σ::Int`, `log(σ)` alone
-      would compute at `Float64` precision and cap the result there. `log2π` is an
-      `Irrational` and adopts `z`'s type (and, for `BigFloat`, its current precision)
-      on its own.
+      Convert `σ` to the promoted type of `z` before taking its log. Otherwise an exact
+      scale paired with a `BigFloat` location would cap this term at `Float64`.
     =#
     σ = oftype(z, d.σ)
     return -(z^2 + log2π) / 2 - logt(σ)
 end
 
 #=
-  Reparameterized by construction: the randomness is drawn in a plain float type and
-  the parameters enter through arithmetic, so pathwise (VI) gradients fall out with
-  no custom AD rules.
+  Draw untracked noise and introduce parameters through arithmetic so pathwise
+  gradients need no custom AD rule.
 =#
 @inline function Base.rand(rng::AbstractRNG, d::Normal)
     return xval(d, randn(rng, noisetype(d)))
@@ -111,10 +100,7 @@ Statistics.mean(d::Normal) = d.μ
 Statistics.var(d::Normal) = d.σ^2
 
 #=
-  `abs` rather than a bare `d.σ`: for an invalid negative scale the bare field would
-  disagree with `var` and hand a negative number to anything using `std` as a proposal
-  width or a tolerance. `abs` is exact, type-preserving, and agrees with `sqrt(var(d))`
-  for every valid scale.
+  `abs` keeps `std` consistent with `sqrt(var(d))`, even for an invalid negative scale.
 =#
 Statistics.std(d::Normal) = abs(d.σ)
 
@@ -130,20 +116,8 @@ cdf(d::Normal, x::Number) = erfc(-zval(d, x) * invsqrt2) / 2
 ccdf(d::Normal, x::Number) = erfc(zval(d, x) * invsqrt2) / 2
 
 #=
-  The two tails need different treatment.
-
-  Far below the mean, `cdf` underflows to zero and `log(cdf(...))` returns `-Inf` where
-  the true value is merely large and negative; `logerfc` computes it directly. Far
-  above the mean the opposite happens: `cdf` rounds to exactly one and the log
-  collapses to `0.0`, destroying every significant digit of a value that is small but
-  nonzero. There `log1p(-ccdf)` keeps full relative accuracy.
-
-  Censored likelihoods and truncations evaluate `logcdf` right where the mass runs out,
-  so a PPL walks into both regimes constantly.
-
-  `select` rather than `?:` so that the pair survives tracing. Both arms are total over
-  the whole line, so evaluating both is harmless: the arm that is wrong for a given `z`
-  is inaccurate, never undefined.
+  `logerfc` avoids lower-tail underflow; `log1p(-ccdf)` preserves upper-tail precision.
+  Use `select` so traced conditions work. Both arms are total over the real line.
 =#
 function logcdf(d::Normal, x::Number)
     z = zval(d, x)
@@ -164,15 +138,8 @@ function logccdf(d::Normal, x::Number)
 end
 
 #=
-  The parenthesisation is load-bearing. `-sqrt2 * erfcinvt(...)` parses as
-  `(-sqrt2) * erfcinvt(...)`, and Base defines
-  `-(x::AbstractIrrational) = -Float64(x)`, so unary minus materializes √2 at Float64
-  before it ever meets the argument, throwing away the Irrational promotion the rest
-  of this file depends on. Negating last keeps `sqrt2` a binary operand, so it adopts
-  the argument's type and (for BigFloat) its precision.
-
-  `erfcinvt`, not `erfcinv`: `p` outside `[0, 1]` must produce `NaN`, not throw. See
-  [`erfcinvt`](@ref).
+  Negate after multiplication: unary minus would materialize `sqrt2` at `Float64`
+  before it can adopt the argument's type. `erfcinvt` keeps out-of-range inputs total.
 =#
 Statistics.quantile(d::Normal, p::Number) = xval(d, -(sqrt2 * erfcinvt(2 * p)))
 

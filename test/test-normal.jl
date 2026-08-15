@@ -6,14 +6,11 @@ using Random: Random, Xoshiro
 using Test
 
 #=
-  The conformance suite covers interface, totality, type genericity, type stability,
-  zero allocations, normalization, cdf/quantile, moments, four AD backends, and
-  GPU-shaped broadcast. Run it across parameter types and signs.
+  Run the conformance suite across parameter types and signs.
 =#
 @testset "conformance" begin
     #=
-      Numerics are pinned against Distributions.jl. It is a test-only reference; the
-      package itself does not depend on it.
+      Distributions.jl is a test-only numerical reference.
     =#
     reference_logpdf(m, x) = Distributions.logpdf(Distributions.Normal(m.μ, m.σ), x)
     for d in (Normal(0.0, 1.0), Normal(-2.5, 0.5), Normal(3.0f0, 2.0f0), Normal(0, 1))
@@ -37,8 +34,7 @@ end
     @test logdensityof(Normal(0, 1), big"1.0") isa BigFloat
 
     #=
-      The BigFloat result must also be accurate to BigFloat precision. That holds
-      because log2π is an Irrational and σ is converted before `log`.
+      Check that no Float64 intermediate caps BigFloat precision.
     =#
     exact = logdensityof(Normal(0, 1), big"1.0")
     full = logdensityof(Normal(big"0.0", big"1.0"), big"1.0")
@@ -96,8 +92,7 @@ end
     @test all(isfinite, v)
 
     #=
-      Reparameterized: d/dμ of a draw is exactly one, and d/dσ is exactly the
-      underlying standard normal draw.
+      For a reparameterized draw, d/dμ is one and d/dσ is the underlying noise.
     =#
     dμ = ForwardDiff.derivative(m -> rand(Xoshiro(7), Normal(m, 2.0)), 1.5)
     @test dμ == 1.0

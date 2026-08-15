@@ -2,9 +2,8 @@ using ProbabilityMeasures
 using Test
 
 #=
-  ProbabilityMeasuresTest (libs/) houses the conformance suite. It is unregistered
-  and wired in through the `[sources]` entry in test/Project.toml, the same mechanism
-  BestieTemplate uses for ProbabilityMeasures itself.
+  The unregistered conformance suite in `libs/` is wired through the `[sources]`
+  entry in `test/Project.toml`.
 =#
 
 #=

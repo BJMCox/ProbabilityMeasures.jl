@@ -4,14 +4,11 @@
 Two-way branch: `iftrue()` when `cond` holds, `iffalse()` otherwise.
 
 A `Bool` condition takes the branch, so the CPU and GPU paths cost what the
-equivalent `?:` would. This is a function so that a tracing frontend can extend it:
-its comparisons return a traced boolean, which cannot drive a branch, so it adds a
-method dispatching on the condition type that evaluates both arms into a select node.
-See `ext/ProbabilityMeasuresReactantExt.jl`.
+equivalent `?:` would. Tracing frontends can extend this for condition types that
+cannot drive a Julia branch.
 
-Both arms must therefore be total. Under tracing the arm that is not taken is still
-evaluated, so an arm that would throw or trap makes the whole expression unusable.
-The thunks keep the `Bool` path from paying for both arms.
+Both arms must be total because tracing may evaluate both. The thunks keep the `Bool`
+path lazy.
 """
 @inline select(cond::Bool, iftrue, iffalse) = cond ? iftrue() : iffalse()
 
@@ -20,11 +17,7 @@ The thunks keep the `Bool` path from paying for both arms.
 
 Total `log`: returns `NaN` where `log` would throw a `DomainError`.
 
-`logdensityof` must never throw (invariant 2 of
-[`AbstractProbabilityMeasure`](@ref)), because a throw inside a GPU kernel is
-undefined behaviour and a PPL will hand these functions invalid parameters during
-line search, warmup, and rejected proposals. `log(0)` is already `-Inf` and does not
-throw, so only the negative branch needs handling.
+`log(0)` is already `-Inf`, so only negative inputs need handling.
 """
 @inline function logt(x::Number)
     #=
@@ -59,16 +52,11 @@ end
 
 The plain floating-point type underlying `T`, with any AD tracking removed.
 
-Used by [`noisetype`](@ref) to decide the type of the *underlying randomness* in a
-reparameterized draw. Sampling `randn` in the tracked type would be wrong, and is
-usually unsupported. The tracking enters through the parameters instead, so the draw
-is still differentiable.
+Used by [`noisetype`](@ref) to draw randomness without AD tracking. Differentiability
+still enters through the measure parameters.
 
-AD and tracing packages extend this via package extensions; see
-`ext/ProbabilityMeasuresForwardDiffExt.jl` and
-`ext/ProbabilityMeasuresReactantExt.jl`. The fallbacks below stop at `Real`: a wrapper
-type that is only `<:Number` has no correct generic answer here, and a missing method
-says so where `float(T)` would quietly return the wrapper.
+AD and tracing packages extend this through package extensions. The generic fallback
+stops at `Real`; other `Number` wrappers require an explicit method.
 """
 basefloat(::Type{T}) where {T<:AbstractFloat} = T
 basefloat(::Type{T}) where {T<:Real} = float(T)

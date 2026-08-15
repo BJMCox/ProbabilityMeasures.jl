@@ -5,51 +5,35 @@ using Reactant: Reactant, TracedRNumber
 using SpecialFunctions: SpecialFunctions
 
 #=
-  Reactant traces Julia into StableHLO, so it imposes the constraints the package
-  already targets for the GPU, plus one: a comparison between traced values is itself a
-  traced value and cannot drive a branch. Each method below either supplies the plain
-  type underneath a traced one or replaces a branch with a select.
-
-  The densities, the distribution functions, promotion of the `IrrationalConstants`
-  constants and the reparameterized `rand` need nothing here. They trace unchanged
-  because measures hold their parameters by value and the arithmetic is generic.
+  Reactant comparisons are traced values and cannot drive Julia branches. These
+  methods expose underlying types or replace branches with traced selects.
 =#
 
 #=
-  The noise for a reparameterized draw is drawn in the plain element type.
-  `randn(::ReactantRNG, T)` already returns a `TracedRNumber{T}`, so asking for the
-  traced type here would nest one inside another. Same reasoning as the ForwardDiff
-  extension.
+  `randn(::ReactantRNG, T)` already returns a traced value, so request its plain
+  element type rather than nesting `TracedRNumber`.
 =#
 function ProbabilityMeasures.basefloat(::Type{TracedRNumber{T}}) where {T}
     return ProbabilityMeasures.basefloat(T)
 end
 
 #=
-  `eltype` of a measure is `float(promote_type(<parameter types>...))`, evaluated on
-  types. Base's generic `float(::Type{<:Number})` goes through `zero(T)`, which a
-  traced type has only for values, so the type-level answer has to be given directly.
-
-  This belongs upstream in Reactant, and should be deleted once it lands there.
+  Base's type-level `float` goes through `zero(T)`, which is unavailable for a traced
+  type. Remove this method once Reactant provides it upstream.
 =#
 Base.float(::Type{TracedRNumber{T}}) where {T} = TracedRNumber{float(T)}
 
 #=
-  Both arms are evaluated and handed to `stablehlo.select`. The contract on `select`
-  requires total arms, so evaluating the arm that is not taken costs work but cannot
-  trap.
+  Both arms are evaluated before the traced select, so the `select` contract requires
+  total arms.
 =#
 @inline function ProbabilityMeasures.select(cond::TracedRNumber{Bool}, iftrue, iffalse)
     return ifelse(cond, iftrue(), iffalse())
 end
 
 #=
-  `ReactantSpecialFunctionsExt` covers `erfc` and `logerfc`, enough for the densities
-  and the log-distribution functions, but not the inverses, so `quantile` has nothing to
-  lower to. The `chlo` op exists; only the binding to `SpecialFunctions` is missing.
-  `erfcinv(y) = erfinv(1 - y)`.
-
-  These two also belong upstream in Reactant, and should be deleted once they land there.
+  Reactant lacks bindings for the inverse error functions used by `quantile`, although
+  the underlying op exists. Remove these methods once they land upstream.
 =#
 function SpecialFunctions.erfcinv(x::TracedRNumber{T}) where {T<:Base.IEEEFloat}
     return Reactant.Ops.erf_inv(one(x) - x)

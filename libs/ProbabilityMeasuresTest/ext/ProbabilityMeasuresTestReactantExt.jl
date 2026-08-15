@@ -11,17 +11,13 @@ using Statistics: quantile
 using Test: @test, @testset
 
 #=
-  The checks jit a broadcast wherever they can, so the result comes back as an `Array`
-  and compares directly against the CPU answer. A jitted scalar comes back wrapped in a
-  concrete Reactant number, and converting that back to a Julia value is a separate API
-  none of these checks are aimed at.
+  Prefer jitted broadcasts so results return as arrays that compare directly with CPU
+  results.
 =#
 
 #=
-  Parameters go in as separate scalars held in a tuple rather than packed into an array.
-  Reactant traverses a tuple and traces each element, so the splat in `_rebuild` stays
-  static. Reading parameters back out of a `TracedRArray` would be scalar indexing, which
-  Reactant disallows for the same reason a GPU array does.
+  Keep parameters in a tuple so `_rebuild` has a static splat. A `TracedRArray` would
+  require forbidden scalar indexing.
 =#
 function _traced_params(d)
     return map(Reactant.ConcreteRNumber, Tuple(ProbabilityMeasuresTest._paramvec(d)))
@@ -31,9 +27,8 @@ end
 _rebuild(::D, p) where {D} = constructorof(D)(p...)
 
 #=
-  This signature has to be narrower than the `(::Any, ::Any)` stub in `conformance.jl`.
-  An identical signature would overwrite the stub instead of adding a method, and method
-  overwriting is an error during precompilation.
+  Keep this signature narrower than the fallback to avoid overwriting it during
+  precompilation.
 =#
 function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs)
     x = collect(float.(xs))
@@ -41,18 +36,16 @@ function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs
 
     @testset "traced data" begin
         #=
-          Only the data is traced. The measure stays concrete, so its parameters are
-          baked in as constants. A density declared on `x::Real` would already fail
-          here: a traced argument is only `<:Number`.
+          Tracing only the data verifies that density arguments accept traced `Number`
+          values rather than requiring `Real`.
         =#
         @test Array(@jit(logdensityof.(d, rx))) ≈ logdensityof.(d, x)
     end
 
     @testset "traced parameters" begin
         #=
-          Here the parameters are traced too, so the parameter bound has to be `Number`:
-          `Normal{TracedRNumber{Float64},…}` must be a constructible type before a
-          gradient with respect to μ or σ can be taken under Reactant.
+          Traced parameters verify that the measure's parameter bounds accept
+          `TracedRNumber`.
         =#
         f = (pp, xx) -> logdensityof.(_rebuild(d, pp), xx)
         @test Array(@jit(f(_traced_params(d), rx))) ≈ logdensityof.(d, x)
@@ -60,9 +53,7 @@ function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs
 
     @testset "distribution functions" begin
         #=
-          `logcdf` and `logccdf` branch on the sign of the standardized value, so they
-          exercise `select`. `quantile` needs `erfcinv`, which the package's own Reactant
-          extension supplies.
+          Log-CDF functions exercise traced `select`; `quantile` exercises `erfcinv`.
         =#
         for f in (cdf, ccdf, logcdf, logccdf)
             @test Array(@jit(f.(d, rx))) ≈ f.(d, x)
@@ -75,9 +66,7 @@ function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs
 
     @testset "totality" begin
         #=
-          Invalid parameters must trace to a non-finite number instead of throwing at
-          trace time. `test_totality` checks the same invariant on the CPU. A `?:` on a
-          traced comparison would fail here.
+          Invalid parameters must trace to non-finite values without throwing.
         =#
         for bad in ProbabilityMeasuresTest._invalids(d)
             f = (pp, xx) -> logdensityof.(_rebuild(bad, pp), xx)
@@ -87,14 +76,8 @@ function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs
 
     @testset "rand" begin
         #=
-          The reparameterized draw. `noisetype` decides the type `randn` draws in, so
-          `basefloat` has to see through the traced wrapper; asking for the traced type
-          would nest one inside another.
-
-          Scalar form only. `rand(rng, d, n)` goes through Random's sampler machinery,
-          which fills an `Array{eltype(d)}`, and a traced number does not convert into a
-          plain `Float64` slot. Batches go through broadcasting instead; the array form is
-          a convenience that tracing does not reach.
+          Scalar sampling verifies that `basefloat` strips the traced wrapper. Batched
+          Random sampling fills a plain array and is outside the tracing path.
         =#
         @test isfinite(Float64(@jit((() -> rand(Random.default_rng(), d))())))
 
@@ -105,9 +88,8 @@ function ProbabilityMeasuresTest.test_reactant(d::AbstractProbabilityMeasure, xs
 
     @testset "checkparams" begin
         #=
-          Under tracing the predicate is a traced `Bool`, so it is multiplied through a
-          broadcast instead of read as a scalar. What is checked is the value it carries,
-          not whether it converts back to a Julia `Bool`.
+          Multiply the traced predicate through a broadcast to test its value without
+          converting it to a Julia `Bool`.
         =#
         f = (pp, xx) -> checkparams(_rebuild(d, pp)) .* xx
         @test Array(@jit(f(_traced_params(d), rx))) ≈ (checkparams(d) ? x : zero(x))

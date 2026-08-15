@@ -1,17 +1,13 @@
 #=
-  The conformance suite. `test_measure` is the single entry point: every measure in
-  the package must pass it, and it is where the type-genericity, allocation, AD and
-  GPU claims in the README get checked.
+  `test_measure` checks the interface, genericity, allocation, AD, and GPU guarantees
+  made by the package.
 =#
 
 """
     default_ad_backends()
 
-The AD backends exercised by [`test_measure`](@ref) by default.
-
-Enzyme is absent: it is a heavy dependency and its Windows support is uneven, so the
-suite would no longer run everywhere. Pass it explicitly via `ad_backends` to include
-it.
+The AD backends exercised by [`test_measure`](@ref) by default. Enzyme can be passed
+explicitly through `ad_backends`.
 """
 function default_ad_backends()
     return (
@@ -20,14 +16,8 @@ function default_ad_backends()
 end
 
 #=
-  `ntuple(..., Val(fieldcount(D)))`, not `p...`: splatting a `Vector` directly gives
-  the constructor call a runtime-unknown argument count, and inference answers with a
-  small union of guessed instantiations (e.g. `Union{Normal{Float32,Float32},
-  Normal{Float64,Float64}}`) rather than the one true return type. That union is
-  benign for ForwardDiff, Zygote and ReverseDiff, but it is enough to make Mooncake's
-  static rule-builder fail on `rand` for a measure it captures. `Val(fieldcount(D))`
-  fixes the tuple length at compile time, so the splat is as static as if it had been
-  written out by hand.
+  Fix the tuple length with `Val(fieldcount(D))`. Splatting `p` directly leaves the
+  argument count unknown to inference and breaks Mooncake's static rule builder.
 =#
 "Rebuild `d` with parameters taken from the vector `p`."
 function _reconstruct(d, p)
@@ -50,8 +40,7 @@ _withtype(d, ::Type{T}) where {T} = _reconstruct(d, map(T, _paramvec(d)))
 
 Run the full conformance suite against the measure `d`.
 
-Each block corresponds to a property this package claims to guarantee. A new measure
-is "done" when this passes.
+Each block checks a package guarantee.
 
 # Keywords
 
@@ -64,25 +53,14 @@ is "done" when this passes.
   - `nsamples::Int`: Monte Carlo sample count for the moment checks.
   - `check_*::Bool`: force an individual block on or off.
 
-# Which blocks run by default
+# Defaults
 
-The blocks that hold for *every* measure (interface conformance, totality, type
-genericity, type stability, allocations, AD, GPU broadcast) default to on. A measure
-that needs one of them switched off does not conform.
+Interface conformance, totality, type genericity, inference, allocations, AD, and GPU
+broadcast run for every measure. Other checks are capability-dependent:
 
-The rest depend on what the measure is, so their defaults are derived from it:
-
-  - `check_normalization` integrates the density with `quadgk`, which is only
-    meaningful for a continuous univariate measure. A discrete measure would need a
-    sum over its support instead, and nothing here can enumerate one yet.
-  - `check_cdf` and `check_moments` cover the *optional* half of `MeasureInterface`,
-    so they run only when the measure actually defines those methods.
-  - `check_reactant` needs Reactant, a weak dependency here because it brings Enzyme
-    and the XLA runtime with it. It runs when the extension has loaded.
-
-Deriving them keeps the defaults from encoding "continuous and univariate" as though
-it held for every measure, so the first discrete measure will not have to pass three
-`false`s to get a meaningful run.
+  - normalization runs for continuous univariate measures with bounded endpoints;
+  - CDF and moment checks run when those optional methods are implemented;
+  - Reactant checks run when its extension is loaded.
 """
 function test_measure(
     d;
@@ -133,16 +111,12 @@ function test_measure(
 end
 
 #=
-  Predicates behind the conditional `check_*` defaults above. They ask what the
-  measure *is*, so that adding a discrete or multivariate measure does not require
-  editing every `test_measure` call site.
+  Predicates used by the capability-dependent defaults above.
 =#
 
 #=
-  `test_normalization` and the integral check in `test_cdf` both call `quadgk`
-  between `minimum(support(d))` and `maximum(support(d))`. That is a Lebesgue
-  integral over an interval: it needs a continuous univariate measure whose support
-  has real endpoints.
+  Quadrature requires a continuous univariate measure whose support provides both
+  endpoints.
 =#
 function _can_integrate(d)
     d isa ContinuousMeasure || return false
@@ -152,15 +126,8 @@ function _can_integrate(d)
 end
 
 #=
-  Whether `f` has a method that genuinely dispatches on `d`.
-
-  `hasmethod` alone is not enough for the moments. `Statistics.mean`, `var` and
-  `std` all carry generic *iterator* methods whose argument type is `Any`, so
-  `hasmethod(mean, Tuple{typeof(d)})` is true for every measure ever written, even
-  one that defines no moments at all. Requiring the resolved method to be narrower
-  than `Any` distinguishes "implements mean" from "is a value, and mean accepts
-  values", so a measure without moments skips `test_moments` instead of failing
-  inside it.
+  `hasmethod` also sees Statistics' generic iterator methods on `Any`. Require the
+  resolved method to dispatch more narrowly to detect an actual implementation.
 =#
 function _dispatches_on(f, argtypes::Tuple)
     D = Tuple{argtypes...}
@@ -204,13 +171,8 @@ function test_totality(d, xs)
     end
 
     #=
-      Invalid parameters produce a non-finite value rather than an error, and
-      construction itself never complains.
-
-      Not `isnan`: which non-finite value comes back is not part of the contract.
-      `Normal(Inf, 1.0)` is invalid but has a log-density of -Inf, and pinning the
-      suite to NaN would push callers toward `isnan` as a validity sentinel. That
-      sentinel silently accepts exactly this case.
+      Invalid parameters produce a non-finite value rather than an error. Do not
+      require `NaN`: `Normal(Inf, 1.0)` validly produces `-Inf`.
     =#
     for bad in _invalids(d)
         @test !checkparams(bad)
@@ -233,13 +195,8 @@ function test_genericity(d, xs, types)
     end
 
     #=
-      Mixed parameter types must neither error nor widen past the true promotion:
-      one Float32 parameter alongside Float64 ones promotes to Float64, and no
-      further.
-
-      A *tuple*, not a vector. `[Float32(a), Float64(b)]` is a `Vector{Float64}`:
-      the literal promotes and converts the Float32 straight back, so the measure
-      comes out homogeneous and the check passes without ever testing anything.
+      Use a tuple to preserve mixed parameter types; an array literal would promote
+      them before the test reaches the constructor.
     =#
     p = _paramvec(d)
     if length(p) >= 2
@@ -331,10 +288,8 @@ function test_cdf(d, xs)
     end
 
     #=
-      The distribution function has to be as type-generic as the density is.
-      Checking only `logdensityof` let a `Float64`-collapsing `quantile` through:
-      `-sqrt2 * x` parses as `(-sqrt2) * x`, and negating an Irrational materializes
-      it at Float64 before it ever sees the argument.
+      Check distribution functions separately: unary negation of an Irrational can
+      otherwise introduce an unnoticed `Float64` intermediate in `quantile`.
     =#
     for T in (Float32, Float64, BigFloat)
         dT = _withtype(d, T)
@@ -423,9 +378,8 @@ end
 
 function test_gpu(d, xs)
     #=
-      JLArray is a CPU-backed GPUArray. It exercises the same broadcast machinery
-      and the same scalar-indexing ban as CUDA, so the real GPU failure modes are
-      caught on ordinary CI hardware with no device present.
+      JLArray exercises GPU broadcast and scalar-indexing rules without requiring a
+      physical device.
     =#
     d32 = _withtype(d, Float32)
     x32 = Float32.(xs)
