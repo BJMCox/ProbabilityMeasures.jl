@@ -1,13 +1,3 @@
-#=
-  Shared conformance suite for ProbabilityMeasures.jl, in the same spirit as
-  EmissionModels.jl's libs/EmissionModelsTest. Unregistered; the test suite
-  `Pkg.develop`s it at runtime (see test/runtests.jl).
-
-  Keeping it here rather than in the main package is what lets the conformance
-  tooling (JET, AllocCheck, four AD backends, JLArrays, QuadGK) stay out of
-  ProbabilityMeasures' dependency graph entirely. A measure library that a PPL
-  depends on should be cheap to load.
-=#
 module ProbabilityMeasuresTest
 
 using AllocCheck: check_allocs
@@ -43,6 +33,6 @@ include("implementations.jl")
 export MeasureInterface
 export test_measure, default_ad_backends, default_testpoints
 export test_totality, test_genericity, test_inference, test_allocations
-export test_normalization, test_cdf, test_moments, test_ad, test_gpu
+export test_normalization, test_cdf, test_moments, test_ad, test_gpu, test_reactant
 
 end

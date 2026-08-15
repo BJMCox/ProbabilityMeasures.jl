@@ -61,5 +61,5 @@ total, and the measure must broadcast as a scalar so that batched evaluation fus
 into a single kernel.
 
 Optional components are the summaries and the distribution function, which are
-meaningful for a univariate measure but not for every measure.
+meaningful for a univariate measure but not in general.
 """
