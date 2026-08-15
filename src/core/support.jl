@@ -38,3 +38,11 @@ insupport(::RealLine, x::Number) = isfinite(x)
 
 Base.minimum(::RealLine) = -Inf
 Base.maximum(::RealLine) = Inf
+
+"The non-negative real line, ``[0, \\infty)``."
+struct NonNegativeReals <: Support end
+
+insupport(::NonNegativeReals, x::Number) = isfinite(x) & (x >= zero(x))
+
+Base.minimum(::NonNegativeReals) = 0.0
+Base.maximum(::NonNegativeReals) = Inf

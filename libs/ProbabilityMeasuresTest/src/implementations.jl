@@ -21,3 +21,14 @@ const UNIVARIATE_OPTIONALS = (:cdf, :quantile, :mean, :var, :std, :median, :entr
 =#
 _invalids(::Normal) = (Normal(0.0, -1.0), Normal(0.0, 0.0), Normal(Inf, 1.0))
 _exactparams(::Normal) = Normal(0, 1)
+
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Exponential [
+    Exponential(1.0), Exponential(0.4), Exponential(3.0f0)
+]
+
+#=
+  Hooks used by `test_totality` and `test_genericity`. A negative and a zero scale
+  both fail `checkparams`, and a non-finite scale does too.
+=#
+_invalids(::Exponential) = (Exponential(-1.0), Exponential(0.0), Exponential(Inf))
+_exactparams(::Exponential) = Exponential(1)
