@@ -341,8 +341,16 @@ end
 function test_ad(d, xs, backends)
     x = first(xs)
     p0 = _paramvec(d)
+    #=
+      The finite-difference reference needs its own precision floor: at a `Float32`
+      p0, `central_fdm`'s step size is tied to `eps(Float32)`, and for a measure whose
+      log-density is nonlinear in its parameters that reference can miss `rtol = 1e-5`
+      even though the AD gradient is exact. Widening only the reference keeps the AD
+      call itself exercising the real parameter type.
+    =#
+    p0_ref = convert.(promote_type(eltype(p0), Float64), p0)
     f = p -> logdensityof(_reconstruct(d, p), x)
-    reference = FiniteDifferences.grad(central_fdm(5, 1), f, p0)[1]
+    reference = FiniteDifferences.grad(central_fdm(5, 1), f, p0_ref)[1]
 
     #=
       Sampling is written in reparameterized form, so the pathwise derivative must
@@ -350,7 +358,7 @@ function test_ad(d, xs, backends)
       one: a VI backend in the PPL relies on it.
     =#
     draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
-    draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
+    draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0_ref)[1]
 
     for backend in backends
         @testset "$(nameof(typeof(backend)))" begin

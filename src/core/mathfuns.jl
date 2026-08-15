@@ -48,6 +48,27 @@ Total `erfcinv`: returns `NaN` where `erfcinv` would throw a `DomainError`.
 end
 
 """
+    log1pt(x)
+
+Total `log1p`: returns `NaN` where `log1p` would throw a `DomainError`.
+"""
+@inline function log1pt(x::Number)
+    return select(x < -one(x), () -> oftype(float(x), NaN), () -> log1p(x))
+end
+
+"""
+    log1mexpt(a)
+
+Total `log(1 - exp(a))` for `a <= 0`, accurate in both regimes: `log(-expm1(a))` near
+zero, `log1p(-exp(a))` in the tail, split at `a = -log(2)`.
+
+`a > 0` only arises from invalid parameters; `logt` keeps that branch total.
+"""
+@inline function log1mexpt(a::Number)
+    return select(a > -logtwo, () -> logt(-expm1(a)), () -> log1p(-exp(a)))
+end
+
+"""
     basefloat(T) -> Type{<:AbstractFloat}
 
 The plain floating-point type underlying `T`, with any AD tracking removed.
