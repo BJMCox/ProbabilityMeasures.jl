@@ -46,7 +46,6 @@ Total `erfcinv`: returns `NaN` where `erfcinv` would throw a `DomainError`.
     valid = (y >= zero(y)) & (y <= 2 * one(y))
     return select(valid, () -> erfcinv(y), () -> oftype(float(y), NaN))
 end
-
 """
     log1pt(x)
 

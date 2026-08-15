@@ -360,6 +360,14 @@ function test_ad(d, xs, backends)
     draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
     draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0_ref)[1]
 
+    #=
+      Sampling is written in reparameterized form, so the pathwise derivative must
+      exist and be exact under every backend `logdensityof` is checked under, not just
+      one: a VI backend in the PPL relies on it.
+    =#
+    draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
+    draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
+
     for backend in backends
         @testset "$(nameof(typeof(backend)))" begin
             g = DifferentiationInterface.gradient(f, backend, p0)
