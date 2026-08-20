@@ -30,10 +30,7 @@ end
     @test isbits(RealLine())
     @test sizeof(RealLine()) == 0
 
-    #=
-      `RealInterval` is the exception: its endpoints come from the measure, so it keeps
-      their types rather than promoting them.
-    =#
+    # Interval endpoints keep their original types.
     s = RealInterval(-1.0f0, 2)
     @test s isa RealInterval{Float32,Int}
     @test minimum(s) === -1.0f0
@@ -43,6 +40,19 @@ end
     @test !insupport(s, 2.5)
     @test !insupport(s, Inf)
     @test isbits(s)
+
+    # Vector support checks both length and values.
+    v = RealVectors(2)
+    @test isbits(v)
+    @test insupport(MvNormal([0.0, 0.0], [1.0 0.0; 0.0 1.0]), [0.0, 1.0])
+    @test insupport(v, [0.0, 1.0])
+    @test !insupport(v, [0.0])
+    @test !insupport(v, [0.0, 0.0, 0.0])
+    @test !insupport(v, [0.0, Inf])
+
+    # Vector support has no scalar integration bounds.
+    @test_throws MethodError minimum(v)
+    @test_throws MethodError maximum(v)
 end
 
 @testset "total math functions" begin

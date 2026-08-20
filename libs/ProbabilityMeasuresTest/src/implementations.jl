@@ -59,3 +59,96 @@ _exactparams(::Uniform) = Uniform(-1, 2)
 function default_testpoints(d::Uniform)
     return [float(quantile(d, p)) for p in (0.1, 0.25, 0.5, 0.75, 0.9)]
 end
+
+#=
+  Optional interface components provided by multivariate measures.
+=#
+const MULTIVARIATE_OPTIONALS = (:meanvector, :cov, :entropy)
+
+@implements MeasureInterface{MULTIVARIATE_OPTIONALS} MvNormal [
+    MvNormal([0.0, 0.0], [1.0 0.0; 0.0 1.0]),
+    MvNormal([1.0, -2.0], [2.0 0.0; 0.5 1.5]),
+    MvNormal(Float32[0.0, 1.0], Float32[1.0 0.0; -0.25 0.5]),
+    MvNormal([1.0, -2.0], Diagonal([2.0, 1.5])),
+    MvNormal([1.0, -2.0], 1.5 * I),
+]
+
+#=
+  Invalid parameters with the same dimension as the measure under test.
+=#
+function _invalids(d::MvNormal)
+    n, T = length(d.μ), _elscalar(d)
+    singular, flipped = _identity(T, n), _identity(T, n)
+    singular[1, 1] = 0
+    flipped[1, 1] = -1
+    return (
+        MvNormal(zeros(T, n), singular),
+        MvNormal(zeros(T, n), flipped),
+        MvNormal(fill(T(Inf), n), _identity(T, n)),
+    )
+end
+
+_identity(::Type{T}, n::Int) where {T} = T[i == j for i in 1:n, j in 1:n]
+
+#=
+  Preserve factor structure so the specialized methods are tested.
+=#
+function _invalids(d::DiagMvNormal)
+    n, T = length(d.μ), _elscalar(d)
+    singular, flipped = ones(T, n), ones(T, n)
+    singular[1] = 0
+    flipped[1] = -1
+    return (
+        MvNormal(zeros(T, n), Diagonal(singular)),
+        MvNormal(zeros(T, n), Diagonal(flipped)),
+        MvNormal(fill(T(Inf), n), Diagonal(ones(T, n))),
+    )
+end
+
+function _invalids(d::IsoMvNormal)
+    n, T = length(d.μ), _elscalar(d)
+    return (
+        MvNormal(zeros(T, n), zero(T) * I),
+        MvNormal(zeros(T, n), -one(T) * I),
+        MvNormal(fill(T(Inf), n), one(T) * I),
+    )
+end
+
+#=
+  Use a non-unit diagonal so the precision test includes a nonzero logarithm.
+=#
+function _exactparams(d::MvNormal)
+    n = length(d.μ)
+    return MvNormal(zeros(Int, n), [i == j ? 2 : Int(i > j) for i in 1:n, j in 1:n])
+end
+
+function _exactparams(d::DiagMvNormal)
+    n = length(d.μ)
+    return MvNormal(zeros(Int, n), Diagonal(fill(2, n)))
+end
+
+_exactparams(d::IsoMvNormal) = MvNormal(zeros(Int, length(d.μ)), 2 * I)
+
+#=
+  Test points at fixed radii in whitened coordinates.
+=#
+function default_testpoints(d::MvNormal)
+    #=
+      Match the measure's precision so ReverseDiff sees one tracked scalar type.
+    =#
+    n, T = length(d.μ), _elscalar(d)
+    return [unwhiten(d, [isodd(i) ? T(s) : -T(s) for i in 1:n]) for s in (0.75, 0.0, 2.5)]
+end
+
+function _extremepoints(d::MvNormal)
+    n = length(d.μ)
+    return (
+        fill(Inf, n),
+        fill(-Inf, n),
+        fill(NaN, n),
+        fill(floatmax(Float64), n),
+        zeros(n),
+        zeros(n + 1),
+        Float64[],
+    )
+end

@@ -19,21 +19,72 @@ end
   Fix the tuple length with `Val(fieldcount(D))`. Splatting `p` directly leaves the
   argument count unknown to inference and breaks Mooncake's static rule builder.
 =#
-"Rebuild `d` with parameters taken from the vector `p`."
+"Rebuild `d` from the flattened parameters in `p`."
 function _reconstruct(d, p)
     D = typeof(d)
-    return constructorof(D)(ntuple(i -> p[i], Val(fieldcount(D)))...)
+    offsets = _paramoffsets(d)
+    return constructorof(D)(
+        ntuple(i -> _unflatten(getfield(d, i), p, offsets[i]), Val(fieldcount(D)))...
+    )
 end
 
 #=
-  The parameters of `d` as a flat vector, promoted to a common *floating-point*
-  type. The `float` matters: a measure may carry integer parameters, and an `Int`
-  can neither be perturbed by a finite-difference step nor tracked by AD.
+  Flatten parameters into a floating-point vector for numerical differentiation and
+  AD. Integer parameters cannot be perturbed or tracked directly.
 =#
-_paramvec(d) = collect(promote(map(float, values(params(d)))...))
+_paramvec(d) = reduce(vcat, map(_flatten, values(params(d))))
+
+_flatten(θ::Number) = [float(θ)]
+_flatten(θ::AbstractArray) = vec(float.(θ))
+
+_unflatten(::Number, p, offset::Int) = p[offset]
+_unflatten(θ::AbstractArray, p, offset::Int) = reshape(p[_range(θ, offset)], size(θ))
+
+_range(θ, offset::Int) = offset:(offset + length(θ) - 1)
+
+#=
+  Preserve structured parameters when flattening and rebuilding them.
+=#
+_flatten(θ::Diagonal) = _flatten(θ.diag)
+_paramlength(θ::Diagonal) = length(θ.diag)
+_unflatten(θ::Diagonal, p, offset::Int) = Diagonal(p[_range(θ.diag, offset)])
+
+_flatten(θ::UniformScaling) = [float(θ.λ)]
+_paramlength(::UniformScaling) = 1
+_unflatten(::UniformScaling, p, offset::Int) = p[offset] * I
+
+"Starting index of each parameter in `_paramvec(d)`."
+function _paramoffsets(d)
+    lengths = map(_paramlength, values(params(d)))
+    #=
+      Use a loop because Zygote cannot handle the keyword call required by `sum` here.
+    =#
+    return ntuple(Val(length(lengths))) do i
+        offset = 1
+        for j in 1:(i - 1)
+            offset += lengths[j]
+        end
+        return offset
+    end
+end
+
+_paramlength(::Number) = 1
+_paramlength(θ::AbstractArray) = length(θ)
 
 "Rebuild `d` with every parameter converted to `T`."
 _withtype(d, ::Type{T}) where {T} = _reconstruct(d, map(T, _paramvec(d)))
+
+# Convert scalar and structured evaluation points to `T`.
+_aspoint(x::Number, ::Type{T}) where {T} = T(x)
+_aspoint(x::AbstractArray, ::Type{T}) where {T} = T.(x)
+_aspoint(x::UniformScaling, ::Type{T}) where {T} = T(x.λ) * I
+
+# Scalar element type of a draw.
+_elscalar(d) = eltype(eltype(d))
+
+# Reduce vector draws to a scalar for gradient tests.
+_scalarize(x::Number) = x
+_scalarize(x::AbstractArray) = sum(x)
 
 """
     test_measure(d; kwargs...)
@@ -55,12 +106,16 @@ Each block checks a package guarantee.
 
 # Defaults
 
-Interface conformance, totality, type genericity, inference, allocations, AD, and GPU
-broadcast run for every measure. Other checks are capability-dependent:
+Interface conformance, totality, type genericity, inference, and AD run for every
+measure. Other checks are capability-dependent:
 
   - normalization runs for continuous univariate measures with bounded endpoints;
-  - CDF and moment checks run when those optional methods are implemented;
+  - CDF checks run when those optional methods are implemented;
+  - the allocation, moment and GPU blocks are written around a scalar draw and run for
+    univariate measures;
   - Reactant checks run when its extension is loaded.
+
+Checks skipped by these defaults belong in the measure's own test file.
 """
 function test_measure(
     d;
@@ -74,12 +129,12 @@ function test_measure(
     check_totality::Bool=true,
     check_genericity::Bool=true,
     check_inference::Bool=true,
-    check_allocations::Bool=true,
+    check_allocations::Bool=_can_check_allocations(d),
     check_normalization::Bool=_can_integrate(d),
     check_cdf::Bool=_has_cdf(d),
-    check_moments::Bool=_has_moments(d),
+    check_moments::Bool=_can_check_moments(d),
     check_ad::Bool=true,
-    check_gpu::Bool=true,
+    check_gpu::Bool=_can_gpu(d),
     check_reactant::Bool=_reactant_loaded(),
 )
     @testset "$name" begin
@@ -145,10 +200,25 @@ end
 =#
 _has_cdf(d) = _dispatches_on(cdf, (typeof(d), eltype(d)))
 
-function _has_moments(d)
+#=
+  The generic moment checks assume scalar summaries and quantiles.
+=#
+function _can_check_moments(d)
+    d isa UnivariateMeasure || return false
     D = (typeof(d),)
     return _dispatches_on(mean, D) && _dispatches_on(var, D) && _dispatches_on(std, D)
 end
+
+#=
+  Vector-valued densities and draws may need result storage, so allocation checks are
+  defined by their measure-specific tests.
+=#
+_can_check_allocations(d) = d isa UnivariateMeasure
+
+#=
+  The generic GPU test broadcasts over scalar points and captures an `isbits` measure.
+=#
+_can_gpu(d) = (d isa UnivariateMeasure) && isbits(_withtype(d, Float32))
 
 "Evaluation points spanning the bulk and both tails of `d`."
 function default_testpoints(d)
@@ -163,7 +233,7 @@ function test_totality(d, xs)
       A throw here is undefined behaviour inside a GPU kernel, and a PPL will hand
       these values in from a bad proposal or an overshooting line search.
     =#
-    for x in (Inf, -Inf, NaN, floatmax(Float64), -floatmax(Float64), 0.0)
+    for x in _extremepoints(d)
         @test (logdensityof(d, x); true)
     end
     for x in xs
@@ -183,27 +253,28 @@ end
 "Instances of `typeof(d)` with invalid parameters; empty if none are known."
 _invalids(d) = ()
 
+"Inputs used to check that `logdensityof` is total."
+_extremepoints(d) = (Inf, -Inf, NaN, floatmax(Float64), -floatmax(Float64), 0.0)
+
 # Invariant 1: type genericity.
 
 function test_genericity(d, xs, types)
     for T in types
         dT = _withtype(d, T)
-        x = T(first(xs))
+        x = _aspoint(first(xs), T)
         @test logdensityof(dT, x) isa T
-        @test rand(Xoshiro(1), dT) isa T
-        @test eltype(dT) === T
+        @test rand(Xoshiro(1), dT) isa eltype(dT)
+        @test _elscalar(dT) === T
     end
 
     #=
-      Use a tuple to preserve mixed parameter types; an array literal would promote
-      them before the test reaches the constructor.
+      Build mixed parameters field by field because a vector would promote them first.
     =#
-    p = _paramvec(d)
-    if length(p) >= 2
-        mixed = _reconstruct(d, (Float32(p[1]), Float64.(p[2:end])...))
+    mixed = _mixedparams(d)
+    if mixed !== nothing
         # Assert the measure really is mixed before drawing any conclusion from it.
         @test length(unique(fieldtypes(typeof(mixed)))) > 1
-        @test logdensityof(mixed, Float32(first(xs))) isa Float64
+        @test logdensityof(mixed, _aspoint(first(xs), Float32)) isa Float64
     end
 
     #=
@@ -213,20 +284,31 @@ function test_genericity(d, xs, types)
     exact = _exactparams(d)
     if exact !== nothing
         x = first(xs)
-        @test logdensityof(exact, Float32(x)) isa Float32
-        vbig = logdensityof(exact, big(float(x)))
+        @test logdensityof(exact, _aspoint(x, Float32)) isa Float32
+        vbig = logdensityof(exact, _aspoint(x, BigFloat))
         @test vbig isa BigFloat
         #=
           The same measure with the parameters already widened. If any Irrational
           constant or `log` were evaluated at Float64 along the way, these would
           agree only to ~1e-16 instead of to full BigFloat precision.
         =#
-        @test abs(vbig - logdensityof(_withtype(exact, BigFloat), big(float(x)))) < 1e-70
+        widened = logdensityof(_withtype(exact, BigFloat), _aspoint(x, BigFloat))
+        @test abs(vbig - widened) < 1e-70
     end
 end
 
 "An instance of `typeof(d)` with exact (integer) parameters, or `nothing`."
 _exactparams(d) = nothing
+
+#=
+  Use `Float32` for the first parameter and `Float64` for the rest.
+=#
+function _mixedparams(d)
+    D = typeof(d)
+    fieldcount(D) >= 2 || return nothing
+    types = ntuple(i -> i == 1 ? Float32 : Float64, Val(fieldcount(D)))
+    return constructorof(D)(map(_aspoint, values(params(d)), types)...)
+end
 
 # Type stability and allocations.
 
@@ -256,9 +338,8 @@ function test_normalization(d)
 end
 
 #=
-  The endpoints of the support, widened to at least `Float64`. A measure whose support
-  carries its own endpoints hands back the parameter type, and a `Float32` interval
-  would ask QuadGK for an `rtol` it cannot reach.
+  Widen integration limits to at least `Float64` so QuadGK can meet the requested
+  tolerance.
 =#
 function _quadlimits(d)
     s = support(d)
@@ -356,30 +437,18 @@ function test_ad(d, xs, backends)
     x = first(xs)
     p0 = _paramvec(d)
     #=
-      The finite-difference reference needs its own precision floor: at a `Float32`
-      p0, `central_fdm`'s step size is tied to `eps(Float32)`, and for a measure whose
-      log-density is nonlinear in its parameters that reference can miss `rtol = 1e-5`
-      even though the AD gradient is exact. Widening only the reference keeps the AD
-      call itself exercising the real parameter type.
+      Use at least `Float64` for the finite-difference reference. The AD call still uses
+      the measure's parameter type.
     =#
     p0_ref = convert.(promote_type(eltype(p0), Float64), p0)
     f = p -> logdensityof(_reconstruct(d, p), x)
     reference = FiniteDifferences.grad(central_fdm(5, 1), f, p0_ref)[1]
 
     #=
-      Sampling is written in reparameterized form, so the pathwise derivative must
-      exist and be exact under every backend `logdensityof` is checked under, not just
-      one: a VI backend in the PPL relies on it.
+      Reduce vector draws to a scalar before differentiating. Keep the original
+      parameter type so the reference and AD calls draw the same noise.
     =#
-    draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
-    draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0_ref)[1]
-
-    #=
-      Sampling is written in reparameterized form, so the pathwise derivative must
-      exist and be exact under every backend `logdensityof` is checked under, not just
-      one: a VI backend in the PPL relies on it.
-    =#
-    draw = p -> rand(Xoshiro(7), _reconstruct(d, p))
+    draw = p -> _scalarize(rand(Xoshiro(7), _reconstruct(d, p)))
     draw_reference = FiniteDifferences.grad(central_fdm(5, 1), draw, p0)[1]
 
     for backend in backends

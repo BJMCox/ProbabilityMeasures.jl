@@ -51,8 +51,9 @@ The untracked float type used to draw noise for a reparameterized sample from `d
     return basefloat(_promoted_paramtype(D))
 end
 
+# Promote scalar parameters and array element types.
 @inline function _promoted_paramtype(::Type{D}) where {D<:AbstractProbabilityMeasure}
-    return promote_type(ntuple(i -> fieldtype(D, i), Val(fieldcount(D)))...)
+    return promote_type(ntuple(i -> eltype(fieldtype(D, i)), Val(fieldcount(D)))...)
 end
 
 #=
