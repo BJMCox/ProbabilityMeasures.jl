@@ -64,6 +64,23 @@ Base.minimum(s::RealInterval) = s.a
 Base.maximum(s::RealInterval) = s.b
 
 """
+    IntegerRange(a, b)
+
+The consecutive integers ``\\{a, a+1, \\ldots, b\\}``.
+
+`b < a` describes the empty set.
+"""
+struct IntegerRange{A<:Integer,B<:Integer} <: Support
+    a::A
+    b::B
+end
+
+insupport(s::IntegerRange, x::Number) = isinteger(x) & (x >= s.a) & (x <= s.b)
+
+Base.minimum(s::IntegerRange) = s.a
+Base.maximum(s::IntegerRange) = s.b
+
+"""
     RealVectors(n)
 
 The real vectors of length `n`, ``\\mathbb{R}^n``.

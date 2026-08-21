@@ -62,7 +62,8 @@ these, and they must hold:
     parameters, it returns a correctly-typed non-finite value (`-Inf` or `NaN`), so it
     can be called from inside a GPU kernel. Which non-finite value comes back is not
     part of the contract; use [`checkparams`](@ref) rather than `isnan` to detect
-    invalid parameters.
+    invalid parameters. Constraints that require a tolerance belong to
+    [`checkparams`](@ref).
  3. **No validation in constructors.** See [`checkparams`](@ref).
  4. **Parameters and arguments are bounded by `Number`, not `Real`.** This admits AD
     and tracing wrappers such as Reactant's `TracedRNumber`.
@@ -74,13 +75,14 @@ abstract type AbstractProbabilityMeasure{F<:VariateForm,S<:ValueSupport} end
 
 #=
   Dispatch aliases used by measure implementations and interface fallbacks. Only the
-  two a measure declares itself a subtype of are exported.
+  three a measure declares itself a subtype of are exported.
 =#
 const UnivariateMeasure{S} = AbstractProbabilityMeasure{Univariate,S}
 const MultivariateMeasure{S} = AbstractProbabilityMeasure{Multivariate,S}
 const ContinuousMeasure{F} = AbstractProbabilityMeasure{F,Continuous}
 const DiscreteMeasure{F} = AbstractProbabilityMeasure{F,Discrete}
 const ContinuousUnivariateMeasure = AbstractProbabilityMeasure{Univariate,Continuous}
+const DiscreteUnivariateMeasure = AbstractProbabilityMeasure{Univariate,Discrete}
 const ContinuousMultivariateMeasure = AbstractProbabilityMeasure{Multivariate,Continuous}
 
 #=

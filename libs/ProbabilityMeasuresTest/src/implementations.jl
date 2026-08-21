@@ -60,6 +60,19 @@ function default_testpoints(d::Uniform)
     return [float(quantile(d, p)) for p in (0.1, 0.25, 0.5, 0.75, 0.9)]
 end
 
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Categorical [
+    Categorical([0.2, 0.3, 0.5]), Categorical([1.0]), Categorical(Float32[0.25, 0.75])
+]
+
+# Invalid probability vectors used by totality checks.
+function _invalids(::Categorical)
+    return (Categorical([-0.5, 1.5]), Categorical([0.0, 0.0]), Categorical(Float64[]))
+end
+_exactparams(::Categorical) = Categorical([1])
+
+# Test each category directly.
+default_testpoints(d::Categorical) = float.(eachindex(d.p))
+
 #=
   Optional interface components provided by multivariate measures.
 =#
