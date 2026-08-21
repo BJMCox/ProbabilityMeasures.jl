@@ -41,6 +41,12 @@ end
     exact = logdensityof(Uniform(0, 2), big"1.0")
     full = logdensityof(Uniform(big"0.0", big"2.0"), big"1.0")
     @test abs(exact - full) < 1e-70
+
+    # Rational endpoints stay exact, so both arms have to float their result.
+    @test logdensityof(Uniform(0, 2), 1//2) === -log(2.0)
+    @test logdensityof(Uniform(0//1, 2//1), 1//2) === -log(2.0)
+    @test logdensityof(Uniform(0, 2), 7//2) === -Inf
+    @test logdensityof(Uniform(0//1, 2//1), -1//2) === -Inf
 end
 
 @testset "construction never validates" begin

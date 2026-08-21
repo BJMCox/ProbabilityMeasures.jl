@@ -70,7 +70,8 @@ The inverse of [`uval`](@ref): ``a + (b - a)u``.
     =#
     u = uval(d, x)
     w = oftype(u, d.b - d.a)
-    return select((x >= d.a) & (x <= d.b), () -> -logt(w), () -> oftype(u, -Inf))
+    # Float the outside-the-interval arm: an exact `u` would give `-1//0`, not `-Inf`.
+    return select((x >= d.a) & (x <= d.b), () -> -logt(w), () -> oftype(float(u), -Inf))
 end
 
 #=

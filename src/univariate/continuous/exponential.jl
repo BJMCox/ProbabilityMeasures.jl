@@ -53,7 +53,8 @@ The scaled value ``x/\\theta``.
 @inline function DensityInterface.logdensityof(d::Exponential, x::Number)
     s = sval(d, x)
     θ = oftype(s, d.θ)
-    return select(x >= zero(x), () -> -(s + logt(θ)), () -> oftype(s, -Inf))
+    # Float the outside-the-support arm: an exact `s` would give `-1//0`, not `-Inf`.
+    return select(x >= zero(x), () -> -(s + logt(θ)), () -> oftype(float(s), -Inf))
 end
 
 #=
@@ -90,7 +91,8 @@ end
 
 function logcdf(d::Exponential, x::Number)
     s = sval(d, x)
-    return select(x >= zero(x), () -> log1mexpt(-s), () -> oftype(s, -Inf))
+    # `float(s)` for the same reason as in `logdensityof`.
+    return select(x >= zero(x), () -> log1mexpt(-s), () -> oftype(float(s), -Inf))
 end
 
 # Exact for every x, unlike `logcdf`: `-s` never needs a stabilizing rewrite.
