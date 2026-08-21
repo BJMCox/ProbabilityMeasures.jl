@@ -43,6 +43,13 @@ end
     exact = logdensityof(Exponential(2), big"1.0")
     full = logdensityof(Exponential(big"2.0"), big"1.0")
     @test abs(exact - full) < 1e-70
+
+    # A rational scale stays exact, so both arms have to float their result.
+    @test logdensityof(Exponential(2), 1//2) ≈ -0.25 - log(2.0)
+    @test logdensityof(Exponential(2//1), 1//2) isa Float64
+    @test logdensityof(Exponential(2), -1//2) === -Inf
+    @test logdensityof(Exponential(2//1), -1//2) === -Inf
+    @test logcdf(Exponential(2//1), -1//2) === -Inf
 end
 
 @testset "construction never validates" begin

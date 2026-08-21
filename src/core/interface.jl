@@ -43,6 +43,34 @@ logdensityof(d, 0.0)      # NaN, not a DomainError
 checkparams(::AbstractProbabilityMeasure) = true
 
 """
+    validateparams(d) -> d
+
+Return `d`, or throw a `DomainError` if [`checkparams`](@ref) rejects its parameters.
+
+For the boundary where user-supplied parameters enter, since constructors do not
+validate. It branches on a value and throws, so it can be neither traced nor called from
+a device kernel: use it once on the way in, never inside a model.
+
+Reaching for this is worth it where an invalid measure would otherwise go unnoticed.
+[`Categorical`](@ref)'s sum-to-one is the case in point: a `p` that does not sum to one
+gives a *finite* log-density, too large by `log(sum(p))` for every category, so unlike a
+negative scale it does not announce itself. A constant offset also cancels in a
+Metropolis-Hastings ratio, which hides it further until `p` starts varying with the
+parameters being inferred.
+
+# Examples
+
+```julia
+validateparams(Normal(0.0, 1.0))          # returns the measure
+validateparams(Categorical([2.0, 2.0]))   # DomainError: does not sum to one
+```
+"""
+function validateparams(d::AbstractProbabilityMeasure)
+    checkparams(d) && return d
+    throw(DomainError(d, "invalid parameters; see `checkparams`"))
+end
+
+"""
     noisetype(d) -> Type{<:AbstractFloat}
 
 The untracked float type used to draw noise for a reparameterized sample from `d`.

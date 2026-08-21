@@ -49,7 +49,7 @@ export Support, RealLine, NonNegativeReals, RealInterval, IntegerRange, RealVect
 export support, insupport
 
 # Interface
-export checkparams, noisetype, basefloat
+export checkparams, validateparams, noisetype, basefloat
 export cdf, ccdf, logcdf, logccdf, entropy
 
 #=
