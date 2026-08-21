@@ -79,6 +79,14 @@ _aspoint(x::Number, ::Type{T}) where {T} = T(x)
 _aspoint(x::AbstractArray, ::Type{T}) where {T} = T.(x)
 _aspoint(x::UniformScaling, ::Type{T}) where {T} = T(x.λ) * I
 
+#=
+  Evaluation points as exact rationals. `rationalize` rather than an exact conversion: a
+  float converts to a denominator near `2^52`, which overflows `Rational{Int}` as soon as
+  a density squares it.
+=#
+_asexact(x::Number, ::Type{I}) where {I<:Integer} = rationalize(I, x; tol=1//1000)
+_asexact(x::AbstractArray, ::Type{I}) where {I<:Integer} = _asexact.(x, I)
+
 # Scalar element type of a draw.
 _elscalar(d) = eltype(eltype(d))
 
@@ -289,8 +297,8 @@ function test_genericity(d, xs, types)
     =#
     mixed = _mixedparams(d)
     if mixed !== nothing
-        # Assert the measure really is mixed before drawing any conclusion from it.
-        @test length(unique(fieldtypes(typeof(mixed)))) > 1
+        # On element types: two parameters can differ in container but share a scalar type.
+        @test length(unique(map(eltype, values(params(mixed))))) > 1
         @test logdensityof(mixed, _aspoint(first(xs), Float32)) isa Float64
     end
 
@@ -311,11 +319,38 @@ function test_genericity(d, xs, types)
         =#
         widened = logdensityof(_withtype(exact, BigFloat), _aspoint(x, BigFloat))
         @test abs(vbig - widened) < 1e-70
+
+        test_exactness(exact, xs)
     end
 end
 
 "An instance of `typeof(d)` with exact (integer) parameters, or `nothing`."
 _exactparams(d) = nothing
+
+#=
+  Exact parameters at an exact argument. Rational arithmetic never leaves the exact types,
+  so nothing in a density forces a float on the measure's behalf. That is what exposes an
+  `Irrational` converted into the argument's own type, which overflows a `Rational{Int}`
+  and throws for a `Rational{BigInt}`, and an accumulator declared exact, which the first
+  `log` rebinds anyway.
+
+  `Rational{BigInt}` doubles as a precision check: it carries the value exactly all the way
+  in, so a `Float64` intermediate shows up as disagreement far above `eps(BigFloat)`.
+=#
+function test_exactness(exact, xs)
+    for I in (Int, BigInt)
+        R = Rational{I}
+        dR = _withtype(exact, R)
+        for x in xs
+            xR = _asexact(x, I)
+            v = logdensityof(dR, xR)
+            @test v isa float(R)
+            widened = logdensityof(_withtype(exact, float(R)), _aspoint(xR, float(R)))
+            @test isfinite(v) == isfinite(widened)
+            isfinite(v) && @test v ≈ widened
+        end
+    end
+end
 
 #=
   Use `Float32` for the first parameter and `Float64` for the rest.
