@@ -105,6 +105,28 @@ end
     @test _promoted_paramtype(typeof(Normal(0.0f0, 1))) === Float32
 end
 
+@testset "validateparams throws where checkparams says no" begin
+    d = Normal(1.5, 2.5)
+    # Returns the measure itself, so it composes at a boundary.
+    @test validateparams(d) === d
+    @test validateparams(Categorical([0.5, 0.5])) isa Categorical
+
+    @test_throws DomainError validateparams(Normal(0.0, -1.0))
+    @test_throws DomainError validateparams(Exponential(-1.0))
+    @test_throws DomainError validateparams(Uniform(1.0, 0.0))
+    @test_throws DomainError validateparams(MvNormal([0.0], [-1.0;;]))
+
+    #=
+      The case it exists for. An unnormalized `p` is the one invalid parameter the
+      density cannot report: it stays finite, too large by `log(sum(p))`.
+    =#
+    unnormalized = Categorical([2.0, 2.0])
+    @test isfinite(logdensityof(unnormalized, 1.0))
+    @test logdensityof(unnormalized, 1.0) ≈
+        logdensityof(Categorical([0.5, 0.5]), 1.0) + log(4)
+    @test_throws DomainError validateparams(unnormalized)
+end
+
 @testset "measures broadcast as scalars" begin
     d = Normal(0.0, 1.0)
     xs = [-1.0, 0.0, 1.0]

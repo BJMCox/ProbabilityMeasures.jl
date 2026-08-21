@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning].
   consistent rule across all three forms, and it is called out in the docstring.
 - `Categorical(p)`, the first discrete measure. It accepts any `AbstractVector`, and
   `checkparams` validates that its probabilities are non-negative and sum to one.
+- `validateparams(d)`, which returns `d` or throws a `DomainError`, for the boundary
+  where user-supplied parameters enter. It earns its place on `Categorical`, whose
+  sum-to-one is the one invalid parameter a density cannot report: an unnormalized `p`
+  gives a finite log-density, too large by `log(sum(p))`. It branches and throws, so it
+  is the one exported name that cannot be traced.
 - `libs/ProbabilityMeasuresTest`: a reusable conformance suite (`test_measure`)
   covering interface conformance, totality, type genericity, type stability,
   zero allocations, normalization, cdf/quantile, moments, four AD backends, and
