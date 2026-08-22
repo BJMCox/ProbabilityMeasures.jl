@@ -5,14 +5,7 @@ using ForwardDiff: ForwardDiff
 using Random: Random, Xoshiro
 using Test
 
-#=
-  Run the conformance suite across parameter types and signs.
-=#
 @testset "conformance" begin
-    #=
-      Distributions.jl is a test-only numerical reference; it shares this
-      location-scale parameterization.
-    =#
     reference_logpdf(m, x) = Distributions.logpdf(Distributions.Laplace(m.μ, m.b), x)
     for d in (Laplace(0.0, 1.0), Laplace(-2.5, 0.5), Laplace(3.0f0, 2.0f0), Laplace(0, 2))
         test_measure(d; name=string(d), reference_logpdf=reference_logpdf)
@@ -25,31 +18,22 @@ end
     @test typeof(Laplace(0.0f0, 1)) === Laplace{Float32,Int}
     @test typeof(Laplace(0.0f0, 1.0)) === Laplace{Float32,Float64}
 
-    # A Float32 parameter meeting a Float64 literal must not silently widen.
     @test Laplace(0.0f0, 1.0f0).b isa Float32
 end
 
 @testset "precision follows the argument, not the parameters" begin
-    # Integer parameters must not pin the result to Float64.
     @test logdensityof(Laplace(0, 2), 1.0f0) isa Float32
     @test logdensityof(Laplace(0, 2), big"1.0") isa BigFloat
 
-    #=
-      Check that no Float64 intermediate caps BigFloat precision.
-    =#
+    # Integer parameters must not reduce `BigFloat` precision.
     exact = logdensityof(Laplace(0, 2), big"1.0")
     full = logdensityof(Laplace(big"0.0", big"2.0"), big"1.0")
     @test abs(exact - full) < 1e-70
 
-    # Rational parameters stay exact, so the `log` term has to float the result.
     @test logdensityof(Laplace(0, 2), 1//2) ≈ -0.25 - log(4.0)
     @test logdensityof(Laplace(0//1, 2//1), 1//2) isa Float64
 
-    #=
-      Exact parameters at an exact argument. Rational arithmetic never leaves the exact
-      types, so `log(2b)` has to promote before it is taken; a `Float64` intermediate
-      would show up as `Rational{BigInt}` disagreeing far above `eps(BigFloat)`.
-    =#
+    # Keep full `BigInt` precision until the logarithm is taken.
     for R in (Rational{Int}, Rational{BigInt})
         F = float(R)
         v = logdensityof(Laplace(R(0), R(2)), R(7) // 5)
@@ -59,7 +43,7 @@ end
 end
 
 @testset "construction never validates" begin
-    d = Laplace(0.0, -1.0)          # no throw
+    d = Laplace(0.0, -1.0)
     @test !checkparams(d)
     @test isnan(logdensityof(d, 0.0))
     @test checkparams(Laplace(0.0, 1.0))
@@ -69,10 +53,6 @@ end
 
 @testset "kink at the location" begin
     d = Laplace(1.5, 2.0)
-    #=
-      The density is continuous at `μ`, so the two one-sided limits meet there, but the
-      log-density's derivative jumps from `1/b` to `-1/b`.
-    =#
     @test logdensityof(d, 1.5) == -log(4.0)
     @test logdensityof(d, nextfloat(1.5)) ≈ logdensityof(d, 1.5)
     @test logdensityof(d, prevfloat(1.5)) ≈ logdensityof(d, 1.5)
@@ -91,7 +71,7 @@ end
         @test logcdf(d, -t) ≈ logccdf(d, t)
     end
 
-    # Off centre the reflection is only as exact as `μ + t` and `μ - t` are.
+    # Rounding makes symmetry around a nonzero location approximate.
     shifted = Laplace(-2.0, 1.5)
     for t in (0.3, 1.0, 7.5)
         @test logdensityof(shifted, -2.0 + t) ≈ logdensityof(shifted, -2.0 - t)
@@ -136,10 +116,7 @@ end
         @test logdensityof(d, x) ≈ Distributions.logpdf(ref(μ, b), x)
         @test cdf(d, x) ≈ Distributions.cdf(ref(μ, b), x)
         @test ccdf(d, x) ≈ Distributions.ccdf(ref(μ, b), x)
-        #=
-          `atol` as well: deep in the opposite tail these are tiny negatives, where
-          Distributions.jl loses relative accuracy and ours does not.
-        =#
+        # Distributions.jl loses relative accuracy when these values are near zero.
         @test logcdf(d, x) ≈ Distributions.logcdf(ref(μ, b), x) atol = 1e-12
         @test logccdf(d, x) ≈ Distributions.logccdf(ref(μ, b), x) atol = 1e-12
     end
@@ -166,10 +143,7 @@ end
     Random.rand!(Xoshiro(1), v, d)
     @test all(isfinite, v)
 
-    #=
-      For a reparameterized draw x = μ + b*(e₁ - e₂), d/dμ is one and d/db is the
-      underlying noise, recoverable as (x - μ)/b.
-    =#
+    # For x = μ + b*(e₁ - e₂), the derivatives are 1 and (x - μ)/b.
     x = rand(Xoshiro(7), d)
     dμ = ForwardDiff.derivative(m -> rand(Xoshiro(7), Laplace(m, 2.0)), 1.5)
     @test dμ == 1.0

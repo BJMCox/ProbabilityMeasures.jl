@@ -3,26 +3,24 @@
     Laplace()
 
 The Laplace (double exponential) measure on ``\\mathbb{R}`` with location `μ` and
-scale `b`, with density
+scale `b`. Its density is
 
 ```math
 p(x) = \\frac{1}{2b} \\exp\\!\\left(-\\frac{|x-\\mu|}{b}\\right)
 ```
 
-with respect to Lebesgue measure. `Laplace()` gives the standard Laplace in `Float64`.
+`Laplace()` creates the standard Laplace measure using `Float64` values.
 
 # Arguments
 
   - `μ::Number`: the location, which is also the mean and the median.
-  - `b::Number`: the scale.
+  - `b::Number`: the positive scale.
 
-The `Number` bound permits numeric wrappers used by AD and tracing systems.
+The density has a sharp point at `x = μ`. Its value is continuous there, but the
+slope of its log changes from `1/b` to `-1/b`.
 
-The density is continuous everywhere, with a kink at `x = μ`, where the log-density's
-derivative jumps from `1/b` to `-1/b`.
-
-Construction does not validate. Invalid parameters produce a non-finite density;
-use [`checkparams`](@ref) to validate explicitly.
+The constructor does not check its arguments. Invalid parameters give a non-finite
+density. Use [`checkparams`](@ref) to check them when needed.
 
 ```julia
 checkparams(Laplace(0.0, -1.0))               # false
@@ -34,12 +32,6 @@ struct Laplace{M<:Number,B<:Number} <: ContinuousUnivariateMeasure
     b::B
 end
 
-#=
-  Julia's generated outer constructor preserves both parameter types. Validation is
-  handled by `checkparams`.
-=#
-
-# `Float64` here is a default, not a constraint. Write `Laplace(0.0f0, 1.0f0)` for Float32.
 Laplace() = Laplace(0.0, 1.0)
 
 Base.eltype(::Type{Laplace{M,B}}) where {M,B} = float(promote_type(M, B))
@@ -51,33 +43,26 @@ support(::Laplace) = RealLine()
 """
     zval(d::Laplace, x)
 
-The standardized value ``(x - \\mu)/b``.
+Return the standardized value ``(x - \\mu)/b``.
 """
 @inline zval(d::Laplace, x::Number) = (x - d.μ) / d.b
 
 """
     xval(d::Laplace, z)
 
-The inverse of [`zval`](@ref): ``\\mu + b z``.
+Convert `z` back to the original scale: ``\\mu + b z``.
 """
 @inline xval(d::Laplace, z::Number) = muladd(d.b, z, d.μ)
 
 @inline function DensityInterface.logdensityof(d::Laplace, x::Number)
     z = zval(d, x)
-    #=
-      Convert `b` to the promoted type of `z` before taking its log, as `Normal` does
-      with `σ`. Otherwise an exact scale paired with a `BigFloat` location would cap
-      this term at `Float64`.
-    =#
+    # Match `b` to `z` so integer parameters do not reduce `BigFloat` precision.
     b = oftype(z, d.b)
     return -abs(z) - logt(2 * b)
 end
 
-#=
-  A difference of two unit exponentials is exactly Laplace(0, 1). Draw the noise
-  untracked and introduce the parameters affinely, so pathwise gradients need no
-  custom AD rule.
-=#
+# The difference of two unit exponential samples follows Laplace(0, 1).
+# Applying `μ` and `b` afterward lets automatic differentiation pass through the sample.
 @inline function Base.rand(rng::AbstractRNG, d::Laplace)
     T = noisetype(d)
     e₁ = -log(rand(rng, T))
@@ -89,9 +74,7 @@ Statistics.mean(d::Laplace) = d.μ
 Statistics.median(d::Laplace) = d.μ
 Statistics.var(d::Laplace) = 2 * d.b^2
 
-#=
-  `abs` keeps `std` consistent with `sqrt(var(d))`, even for an invalid negative scale.
-=#
+# Keep this equal to `sqrt(var(d))` even when `b` is invalid and negative.
 Statistics.std(d::Laplace) = sqrt2 * abs(d.b)
 
 function entropy(d::Laplace)
@@ -99,10 +82,7 @@ function entropy(d::Laplace)
     return one(b) + logt(2 * b)
 end
 
-#=
-  Each half of the density carries one half of the mass. Measuring from the near side
-  of `μ` keeps the exponential small, so neither expression cancels.
-=#
+# Half of the probability lies on each side of `μ`.
 function cdf(d::Laplace, x::Number)
     z = zval(d, x)
     return select(z < zero(z), () -> exp(z) / 2, () -> 1 - exp(-z) / 2)
@@ -113,12 +93,8 @@ function ccdf(d::Laplace, x::Number)
     return select(z > zero(z), () -> exp(-z) / 2, () -> 1 - exp(z) / 2)
 end
 
-#=
-  Below `μ` the cdf is `exp(z)/2`, so its log is `z - log 2`, exact however deep the
-  tail runs. Above `μ` it is one minus a small number, which is what `log1p` is for.
-  `log1pt` rather than `log1p` because tracing evaluates both arms, and the untaken
-  one runs past `-1`.
-=#
+# Compute the small tail directly so its log stays finite. Some tools evaluate both
+# branches; `log1pt` keeps the unused branch from throwing when its input is below -1.
 function logcdf(d::Laplace, x::Number)
     z = zval(d, x)
     return select(z < zero(z), () -> z - logtwo, () -> log1pt(-exp(-z) / 2))
@@ -129,11 +105,8 @@ function logccdf(d::Laplace, x::Number)
     return select(z > zero(z), () -> -z - logtwo, () -> log1pt(-exp(z) / 2))
 end
 
-#=
-  Invert each half against its own endpoint, so the small probability stays the
-  argument of the log. `logt` keeps this total for `p` outside `[0, 1]`, which can
-  arrive from float noise in a `cdf` round-trip.
-=#
+# Use `p` in the lower half and `1 - p` in the upper half to preserve small
+# probabilities. Outside `[0, 1]`, `logt` returns `NaN` instead of throwing.
 function Statistics.quantile(d::Laplace, p::Number)
     half = one(p) / 2
     return select(p < half, () -> xval(d, logt(2 * p)), () -> xval(d, -logt(2 * (1 - p))))

@@ -64,14 +64,8 @@ end
     Laplace(0.0, 1.0), Laplace(-2.5, 0.5), Laplace(3.0f0, 2.0f0)
 ]
 
-#=
-  Hooks used by `test_totality` and `test_genericity`. Invalid scales (negative and
-  zero) and a non-finite location are both covered, since they fail differently.
-
-  The exact instance uses a scale other than one half so that `log(2b)` is not
-  identically zero and the precision check has something to bite on.
-=#
 _invalids(::Laplace) = (Laplace(0.0, -1.0), Laplace(0.0, 0.0), Laplace(Inf, 1.0))
+# Use scale 2 so `log(2b)` is not zero during the precision check.
 _exactparams(::Laplace) = Laplace(0, 2)
 
 @implements MeasureInterface{UNIVARIATE_OPTIONALS} Categorical [
