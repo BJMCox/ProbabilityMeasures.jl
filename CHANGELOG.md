@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning].
 - The `RealLine`, `NonNegativeReals`, `PositiveReals`, `NonNegativeIntegers`,
   `RealInterval`, `IntegerRange`, `IntegerSimplex` and `RealVectors` supports.
   `UnitInterval` will arrive with the first measure that needs one.
-- `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)` and `Uniform(a, b)`, with
+- `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)`, `Weibull(α, θ)` and
+  `Uniform(a, b)`, with
   heterogeneous parameter types and no promotion or validation at construction.
 - `MvNormal(μ, L)`, the first multivariate measure, with the
   `ContinuousMultivariateMeasure` alias it dispatches on. It is parameterized by the

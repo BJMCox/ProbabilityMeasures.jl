@@ -18,6 +18,7 @@ using Test
         Uniform(-1.0, 2.0),
         Cauchy(-1.0, 2.0),
         Geometric(0.3),
+        Weibull(1.5, 2.0),
     )
         test_reactant(d, default_testpoints(d))
     end
@@ -47,5 +48,10 @@ using Test
         grad = p -> Enzyme.gradient(Enzyme.Reverse, loss, p)
         got = @jit grad(Reactant.ConcreteRNumber(0.5))
         @test Float64(got[1]) ≈ -4.0 rtol = 1e-10
+
+        loss = (a, s) -> logdensityof(Weibull(a, s), 1.0)
+        grad = (a, s) -> Enzyme.gradient(Enzyme.Reverse, loss, a, s)
+        got = @jit grad(Reactant.ConcreteRNumber(1.0), Reactant.ConcreteRNumber(1.0))
+        @test [Float64(got[1]), Float64(got[2])] ≈ [1.0, 0.0] rtol = 1e-10
     end
 end
