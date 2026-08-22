@@ -15,14 +15,17 @@ end
 "Rebuild `d` from the flattened parameters in `p`."
 function _reconstruct(d, p)
     D = typeof(d)
-    offsets = _paramoffsets(d)
+    offsets, names = _paramoffsets(d), fieldnames(D)
     return constructorof(D)(
-        ntuple(i -> _unflatten(getfield(d, i), p, offsets[i]), Val(fieldcount(D)))...
+        ntuple(
+            i -> _unflattenfield(d, names[i], getfield(d, i), p, offsets[i]),
+            Val(fieldcount(D)),
+        )...,
     )
 end
 
 # Flatten parameters into floating-point values that differentiation tools can change.
-_paramvec(d) = reduce(vcat, map(_flatten, values(params(d))))
+_paramvec(d) = reduce(vcat, _mapfields(_flattenfield, d))
 
 _flatten(θ::Number) = [float(θ)]
 _flatten(θ::AbstractArray) = vec(float.(θ))
@@ -31,6 +34,28 @@ _unflatten(::Number, p, offset::Int) = p[offset]
 _unflatten(θ::AbstractArray, p, offset::Int) = reshape(p[_range(θ, offset)], size(θ))
 
 _range(θ, offset::Int) = offset:(offset + length(θ) - 1)
+
+"""
+Names of the parameters that test sweeps must leave unchanged.
+
+Name them rather than exclude them by type: `Binomial.n` fixes the support and the loop
+lengths, while other integer parameters should still be swept.
+"""
+_structural(d) = ()
+
+_isstructural(d, name::Symbol) = name in _structural(d)
+
+function _mapfields(f, d)
+    θs = params(d)
+    return map((name, θ) -> f(d, name, θ), keys(θs), values(θs))
+end
+
+_flattenfield(d, name::Symbol, θ) = _isstructural(d, name) ? Union{}[] : _flatten(θ)
+_lengthfield(d, name::Symbol, θ) = _isstructural(d, name) ? 0 : _paramlength(θ)
+
+function _unflattenfield(d, name::Symbol, θ, p, offset::Int)
+    return _isstructural(d, name) ? θ : _unflatten(θ, p, offset)
+end
 
 # Preserve structured parameters when flattening and rebuilding.
 _flatten(θ::Diagonal) = _flatten(θ.diag)
@@ -43,7 +68,7 @@ _unflatten(::UniformScaling, p, offset::Int) = p[offset] * I
 
 "Starting index of each parameter in `_paramvec(d)`."
 function _paramoffsets(d)
-    lengths = map(_paramlength, values(params(d)))
+    lengths = _mapfields(_lengthfield, d)
     # Zygote cannot handle the keyword call needed by `sum` here.
     return ntuple(Val(length(lengths))) do i
         offset = 1
@@ -247,7 +272,7 @@ function test_genericity(d, xs, types)
         @test logdensityof(mixed, _aspoint(first(xs), Float32)) isa Float64
     end
 
-    # Integer parameters must not reduce the argument's precision.
+    # Exact parameters must not reduce the argument's precision.
     exact = _exactparams(d)
     if exact !== nothing
         x = first(xs)
@@ -263,7 +288,7 @@ function test_genericity(d, xs, types)
     end
 end
 
-"An instance of `typeof(d)` with exact (integer) parameters, or `nothing`."
+"A test instance with exact parameters, using rationals when integers are not suitable."
 _exactparams(d) = nothing
 
 # Exact rational inputs expose calculations that assume floating-point parameters.
@@ -283,12 +308,20 @@ function test_exactness(exact, xs)
     end
 end
 
-# Use `Float32` for the first parameter and `Float64` for the rest.
+# Use `Float32` for the first sweepable parameter and `Float64` for the rest.
 function _mixedparams(d)
     D = typeof(d)
-    fieldcount(D) >= 2 || return nothing
-    types = ntuple(i -> i == 1 ? Float32 : Float64, Val(fieldcount(D)))
-    return constructorof(D)(map(_aspoint, values(params(d)), types)...)
+    θs = params(d)
+    free = map(name -> !_isstructural(d, name), keys(θs))
+    count(free) >= 2 || return nothing
+    firstfree = findfirst(free)
+    types = ntuple(i -> i == firstfree ? Float32 : Float64, Val(fieldcount(D)))
+    # Fixed parameters keep their original type.
+    converted = ntuple(Val(fieldcount(D))) do i
+        θ = values(θs)[i]
+        return free[i] ? _aspoint(θ, types[i]) : θ
+    end
+    return constructorof(D)(converted...)
 end
 
 function test_inference(d, xs)

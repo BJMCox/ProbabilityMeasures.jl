@@ -62,6 +62,18 @@ end
     return promote_type(ntuple(i -> eltype(fieldtype(D, i)), Val(fieldcount(D)))...)
 end
 
+"""
+    masstype(d, x)
+
+The floating-point type for the probability of `x` under a discrete `d`.
+
+It promotes the parameter types with the type of `x`, so a `BigFloat` argument keeps
+its precision.
+"""
+@inline function masstype(::D, x::Number) where {D<:DiscreteMeasure}
+    return float(promote_type(_promoted_paramtype(D), typeof(x)))
+end
+
 function Random.rand(
     rng::AbstractRNG, sp::Random.SamplerTrivial{<:AbstractProbabilityMeasure}
 )

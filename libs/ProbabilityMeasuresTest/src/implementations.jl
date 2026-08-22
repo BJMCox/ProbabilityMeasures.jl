@@ -49,6 +49,45 @@ _exactparams(::Categorical) = Categorical([1])
 
 default_testpoints(d::Categorical) = float.(eachindex(d.p))
 
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Bernoulli [
+    Bernoulli(0.3), Bernoulli(0.5), Bernoulli(0.75f0)
+]
+
+# These must be non-finite at the first test point, zero. A negative `p` remains
+# finite there and is tested separately.
+_invalids(::Bernoulli) = (Bernoulli(1.5), Bernoulli(Inf), Bernoulli(NaN))
+
+# Zero and one give an infinite log-density, so use an exact rational instead.
+_exactparams(::Bernoulli) = Bernoulli(1//2)
+
+default_testpoints(::Bernoulli) = [0.0, 1.0]
+
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Binomial [
+    Binomial(1, 0.5), Binomial(5, 0.3), Binomial(4, 0.6f0)
+]
+
+# The trial count sets the support and loop lengths.
+_structural(::Binomial) = (:n,)
+
+# Keep the original trial count so the test points remain in the support. A negative
+# `p` stays finite at zero and is tested separately.
+function _invalids(d::Binomial)
+    return (Binomial(-1, 0.5), Binomial(d.n, 1.5), Binomial(d.n, NaN))
+end
+
+# Use an exact rational probability while leaving the trial count unchanged.
+_exactparams(d::Binomial) = Binomial(d.n, 1//2)
+
+# Use outcomes with distinct CDF values. Once rounding makes the CDF equal one,
+# quantile cannot recover later outcomes. Keep the last outcome because quantile maps
+# a probability of one to it directly.
+function default_testpoints(d::Binomial)
+    cs = [cdf(d, float(k)) for k in 0:(d.n)]
+    separated(k) = cs[k + 1] > (k == 0 ? zero(eltype(cs)) : cs[k])
+    invertible(k) = k == d.n || (separated(k) && cs[k + 1] < one(eltype(cs)))
+    return [float(k) for k in 0:(d.n) if invertible(k)]
+end
+
 # Optional methods for multivariate measures.
 const MULTIVARIATE_OPTIONALS = (:meanvector, :cov, :entropy)
 

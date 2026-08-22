@@ -15,7 +15,7 @@ using DensityInterface: DensityInterface, densityof, logdensityof
 using IrrationalConstants: invsqrt2, log2π, logtwo, sqrt2
 using LinearAlgebra: Diagonal, LowerTriangular, UniformScaling
 using Random: Random, AbstractRNG
-using SpecialFunctions: erfc, erfcinv, logerfc
+using SpecialFunctions: erfc, erfcinv, logerfc, loggamma
 using Statistics: Statistics, cov, mean, median, quantile, std, var
 using StatsAPI: StatsAPI, params
 
@@ -30,6 +30,8 @@ include("univariate/continuous/uniform.jl")
 include("univariate/continuous/laplace.jl")
 
 include("univariate/discrete/categorical.jl")
+include("univariate/discrete/bernoulli.jl")
+include("univariate/discrete/binomial.jl")
 
 include("multivariate/continuous/mvnormal.jl")
 
@@ -61,6 +63,8 @@ export Exponential
 export Uniform
 export Laplace
 export Categorical
+export Bernoulli
+export Binomial
 export MvNormal
 
 end
