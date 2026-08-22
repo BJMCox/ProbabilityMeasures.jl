@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning].
   consistent rule across all three forms, and it is called out in the docstring.
 - `Categorical(p)`, the first discrete measure. It accepts any `AbstractVector`, and
   `checkparams` validates that its probabilities are non-negative and sum to one.
+- `Laplace(μ, b)`, whose density has a kink at `x = μ`. `logcdf` and `logccdf`
+  compute the near tail directly, so they stay finite where `cdf` and `ccdf` underflow,
+  and the reparameterized draw is the difference of two exponential samples.
 - `validateparams(d)`, which returns `d` or throws a `DomainError`, for the boundary
   where user-supplied parameters enter. It earns its place on `Categorical`, whose
   sum-to-one is the one invalid parameter a density cannot report: an unnormalized `p`

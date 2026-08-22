@@ -27,6 +27,7 @@ include("core/interface.jl")
 include("univariate/continuous/normal.jl")
 include("univariate/continuous/exponential.jl")
 include("univariate/continuous/uniform.jl")
+include("univariate/continuous/laplace.jl")
 
 include("univariate/discrete/categorical.jl")
 
@@ -58,6 +59,7 @@ export mean, var, std, median, quantile, cov
 export Normal
 export Exponential
 export Uniform
+export Laplace
 export Categorical
 export MvNormal
 
