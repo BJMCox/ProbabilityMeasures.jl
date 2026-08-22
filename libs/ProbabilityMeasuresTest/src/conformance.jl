@@ -22,17 +22,20 @@ end
 "Rebuild `d` from the flattened parameters in `p`."
 function _reconstruct(d, p)
     D = typeof(d)
-    offsets = _paramoffsets(d)
+    offsets, names = _paramoffsets(d), fieldnames(D)
     return constructorof(D)(
-        ntuple(i -> _unflatten(getfield(d, i), p, offsets[i]), Val(fieldcount(D)))...
+        ntuple(
+            i -> _unflattenfield(d, names[i], getfield(d, i), p, offsets[i]),
+            Val(fieldcount(D)),
+        )...,
     )
 end
 
 #=
   Flatten parameters into a floating-point vector for numerical differentiation and
-  AD. Integer parameters cannot be perturbed or tracked directly.
+  AD.
 =#
-_paramvec(d) = reduce(vcat, map(_flatten, values(params(d))))
+_paramvec(d) = reduce(vcat, _mapfields(_flattenfield, d))
 
 _flatten(θ::Number) = [float(θ)]
 _flatten(θ::AbstractArray) = vec(float.(θ))
@@ -41,6 +44,33 @@ _unflatten(::Number, p, offset::Int) = p[offset]
 _unflatten(θ::AbstractArray, p, offset::Int) = reshape(p[_range(θ, offset)], size(θ))
 
 _range(θ, offset::Int) = offset:(offset + length(θ) - 1)
+
+#=
+  Structural parameters, named per measure. `Binomial`'s `n` fixes loop bounds and the
+  support rather than shifting or scaling a density, so it can be neither perturbed nor
+  tracked nor converted to another float type. Flattening it to zero entries holds it
+  fixed everywhere the others are swept.
+
+  Named rather than recognized by type: an `Integer` parameter is not structural on its
+  own, and `_exactparams` deliberately hands ordinary parameters integer values.
+=#
+"The parameters of `d` that are structural, by name."
+_structural(d) = ()
+
+_isstructural(d, name::Symbol) = name in _structural(d)
+
+# Apply `f(d, name, θ)` to each parameter of `d`.
+function _mapfields(f, d)
+    θs = params(d)
+    return map((name, θ) -> f(d, name, θ), keys(θs), values(θs))
+end
+
+_flattenfield(d, name::Symbol, θ) = _isstructural(d, name) ? Union{}[] : _flatten(θ)
+_lengthfield(d, name::Symbol, θ) = _isstructural(d, name) ? 0 : _paramlength(θ)
+
+function _unflattenfield(d, name::Symbol, θ, p, offset::Int)
+    return _isstructural(d, name) ? θ : _unflatten(θ, p, offset)
+end
 
 #=
   Preserve structured parameters when flattening and rebuilding them.
@@ -55,7 +85,7 @@ _unflatten(::UniformScaling, p, offset::Int) = p[offset] * I
 
 "Starting index of each parameter in `_paramvec(d)`."
 function _paramoffsets(d)
-    lengths = map(_paramlength, values(params(d)))
+    lengths = _mapfields(_lengthfield, d)
     #=
       Use a loop because Zygote cannot handle the keyword call required by `sum` here.
     =#
@@ -303,8 +333,8 @@ function test_genericity(d, xs, types)
     end
 
     #=
-      Exact (integer) parameters must not cap the precision of the result; it has to
-      follow the argument.
+      Exact parameters must not cap the precision of the result; it has to follow the
+      argument.
     =#
     exact = _exactparams(d)
     if exact !== nothing
@@ -324,7 +354,13 @@ function test_genericity(d, xs, types)
     end
 end
 
-"An instance of `typeof(d)` with exact (integer) parameters, or `nothing`."
+"""
+An instance of `typeof(d)` with exact parameters, or `nothing`.
+
+Integers wherever a parameter can take one. A probability cannot: `0` and `1` put a
+`-Inf` where the precision checks need a finite value, so a rational serves there
+instead.
+"""
 _exactparams(d) = nothing
 
 #=
@@ -353,13 +389,23 @@ function test_exactness(exact, xs)
 end
 
 #=
-  Use `Float32` for the first parameter and `Float64` for the rest.
+  Use `Float32` for the first non-structural parameter and `Float64` for the rest.
+  Fewer than two of them leaves nothing to mix, as for a measure whose only other
+  parameter is structural.
 =#
 function _mixedparams(d)
     D = typeof(d)
-    fieldcount(D) >= 2 || return nothing
-    types = ntuple(i -> i == 1 ? Float32 : Float64, Val(fieldcount(D)))
-    return constructorof(D)(map(_aspoint, values(params(d)), types)...)
+    θs = params(d)
+    free = map(name -> !_isstructural(d, name), keys(θs))
+    count(free) >= 2 || return nothing
+    firstfree = findfirst(free)
+    types = ntuple(i -> i == firstfree ? Float32 : Float64, Val(fieldcount(D)))
+    # A structural parameter keeps its own type; a float would not rebuild.
+    converted = ntuple(Val(fieldcount(D))) do i
+        θ = values(θs)[i]
+        return free[i] ? _aspoint(θ, types[i]) : θ
+    end
+    return constructorof(D)(converted...)
 end
 
 # Type stability and allocations.

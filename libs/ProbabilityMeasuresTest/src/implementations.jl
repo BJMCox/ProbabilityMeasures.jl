@@ -73,6 +73,64 @@ _exactparams(::Categorical) = Categorical([1])
 # Test each category directly.
 default_testpoints(d::Categorical) = float.(eachindex(d.p))
 
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Bernoulli [
+    Bernoulli(0.3), Bernoulli(0.5), Bernoulli(0.75f0)
+]
+
+#=
+  Hooks used by `test_totality` and `test_genericity`. Each invalid instance has to be
+  non-finite at `first(xs)`, the zero atom, and a `p` below zero is not: it drops out of
+  that atom's density and leaves it finite but unnormalized. `test-bernoulli.jl` covers
+  that direction.
+=#
+_invalids(::Bernoulli) = (Bernoulli(1.5), Bernoulli(Inf), Bernoulli(NaN))
+
+#=
+  A rational rather than an integer: the only integer probabilities are zero and one,
+  which put a `-Inf` where the precision check needs a finite value.
+=#
+_exactparams(::Bernoulli) = Bernoulli(1//2)
+
+# Both atoms directly.
+default_testpoints(::Bernoulli) = [0.0, 1.0]
+
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Binomial [
+    Binomial(1, 0.5), Binomial(5, 0.3), Binomial(4, 0.6f0)
+]
+
+# The trial count sets the support and every loop bound, so the sweeps hold it fixed.
+_structural(::Binomial) = (:n,)
+
+#=
+  A negative count, a probability above one, and a `NaN`. As for `Bernoulli`, a `p`
+  below zero is invisible at the zero atom, and `test-binomial.jl` covers it. The two
+  probability failures keep the measure's own `n`, so their support still holds the
+  test points.
+=#
+function _invalids(d::Binomial)
+    return (Binomial(-1, 0.5), Binomial(d.n, 1.5), Binomial(d.n, NaN))
+end
+
+#=
+  A rational `p`, for the reason given for `Bernoulli`. `n` is structural, so the sweep
+  leaves it alone and it can stay the measure's own, keeping the test points in support.
+=#
+_exactparams(d::Binomial) = Binomial(d.n, 1//2)
+
+#=
+  Every atom that `test_cdf`'s round trip can recover, which for a summed `cdf` means
+  the sum separates it from the atom below and has not yet saturated at one. Out in the
+  saturated stretch the cdf is flat and no `quantile` can invert it, so the round trip
+  would be measuring the summation instead of the measure. The last atom is the
+  exception: `quantile` answers a probability of one with it however the sums came out.
+=#
+function default_testpoints(d::Binomial)
+    cs = [cdf(d, float(k)) for k in 0:(d.n)]
+    separated(k) = cs[k + 1] > (k == 0 ? zero(eltype(cs)) : cs[k])
+    invertible(k) = k == d.n || (separated(k) && cs[k + 1] < one(eltype(cs)))
+    return [float(k) for k in 0:(d.n) if invertible(k)]
+end
+
 #=
   Optional interface components provided by multivariate measures.
 =#

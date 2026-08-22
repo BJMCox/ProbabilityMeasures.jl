@@ -45,10 +45,6 @@ end
 
 support(d::Categorical) = IntegerRange(1, length(d.p))
 
-@inline function masstype(::Categorical{V}, x::Number) where {V}
-    return float(promote_type(eltype(V), typeof(x)))
-end
-
 """
     massat(d::Categorical, x)
 
