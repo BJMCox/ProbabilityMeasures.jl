@@ -13,29 +13,22 @@ P(X = k) = \\binom{n}{k} p^k (1-p)^{n-k}.
   - `n::Integer`: the number of trials.
   - `p::Number`: the success probability of one trial.
 
-`n` is an `Integer` rather than a `Number` because it is structural: it fixes the
-support and the loops that run over it, so it can be neither differentiated nor
-traced. Precision comes from `p` and from the argument, and `eltype(d)` is
-`float(typeof(p))`. The `Number` bound on `p` permits the numeric wrappers used by AD
-and tracing systems.
+`n` stays an integer because it sets the support and loop lengths. The result type
+follows `p` and the value being evaluated. Samples use `float(typeof(p))`.
 
 # Cost
 
-The log-density is ``O(1)``. Everything else here is ``O(n)``: `cdf`, `ccdf` and
-`quantile` sum the mass function, `entropy` has no closed form, and `rand` adds up `n`
-Bernoulli draws. The regularized incomplete beta would give an ``O(1)`` `cdf`, but it
-is an iterative continued fraction, so it can be neither traced nor called from a
-device kernel. `logcdf` and `logccdf` take the generic `log(cdf(d, x))` fallback,
-which underflows further out in the tail than a log-scale sum would.
+The log-density takes constant time. Sampling, entropy, CDFs, and quantiles loop over
+`n` trials or outcomes. These loops work with automatic differentiation and on GPUs.
 
-For large `n` the summed `cdf` reaches one a few atoms short of `n`, where the mass
-left is smaller than an ulp of the running total, so `quantile` cannot recover those
-atoms from a `cdf` value. It does still return `n` for a probability of one.
+For large `n`, rounding can make the CDF reach one before the last outcome.
+`quantile(d, cdf(d, k))` may then fail to recover those final outcomes, though a
+probability of one always returns `n`.
 
-Construction does not validate. A `p` outside ``[0, 1]`` gives a non-finite
-log-density in the interior of the support but a finite, unnormalized one at `k = 0`
-or `k = n`, where the offending factor drops out, so use [`checkparams`](@ref) on
-user-supplied probabilities. See [`validateparams`](@ref).
+The constructor does not check its arguments. An invalid `p` can still give a finite
+log-density at `k = 0` or `k = n`, so validate user input with
+[`validateparams`](@ref). Use [`checkparams`](@ref) when only a boolean result is
+needed.
 
 ```julia
 checkparams(Binomial(3, 1.5))               # false
@@ -48,12 +41,6 @@ struct Binomial{N<:Integer,P<:Number} <: DiscreteUnivariateMeasure
     p::P
 end
 
-#=
-  Julia's generated outer constructor preserves both parameter types. Validation is
-  handled by `checkparams`. There is no zero-argument default: unlike a standard
-  normal, no trial count is canonical.
-=#
-
 Base.eltype(::Type{Binomial{N,P}}) where {N,P} = float(P)
 
 function checkparams(d::Binomial)
@@ -65,11 +52,10 @@ support(d::Binomial) = IntegerRange(0, d.n)
 """
     logbinom(n, k)
 
-``\\log \\binom{n}{k}`` for counts already converted to a float type.
+Return ``\\log \\binom{n}{k}`` for floating-point counts.
 
-Total: `loggamma` throws for a negative non-integer argument, so the counts are
-clamped at zero. A clamped value is only reached outside the support, where the
-density is `-Inf` whatever this returns.
+The counts are clamped because `loggamma` rejects negative non-integers. Clamping
+only affects values outside the support, where the final density is `-Inf`.
 """
 @inline function logbinom(n::T, k::T) where {T<:Number}
     nc, kc, mc = max(n, zero(T)), max(k, zero(T)), max(n - k, zero(T))
@@ -79,25 +65,15 @@ end
 @inline function DensityInterface.logdensityof(d::Binomial, x::Number)
     T = masstype(d, x)
     n, k, p = convert(T, d.n), convert(T, x), convert(T, d.p)
-    #=
-      Convert the counts before the log-gammas. They are exact integers, and an `Int`
-      argument would compute the coefficient at `Float64` and cap a `BigFloat` density
-      there.
-    =#
-    #=
-      A `p` of zero or one is a valid degenerate measure, where a vanishing count has
-      to win over an infinite log.
-    =#
+    # Convert counts before `loggamma` so an integer `n` does not reduce `BigFloat`
+    # precision. Skip zero terms so `p = 0` and `p = 1` work.
     a = select(k == zero(T), () -> zero(T), () -> k * logt(p))
     b = select(k == n, () -> zero(T), () -> (n - k) * log1pt(-p))
     return select(insupport(d, x), () -> logbinom(n, k) + a + b, () -> convert(T, -Inf))
 end
 
-#=
-  Binomial draws have no pathwise derivative, so this is the sum of `n` Bernoulli
-  draws rather than anything cleverer. A rejection sampler would be `O(1)` but needs
-  to branch on a value.
-=#
+# Add `n` Bernoulli samples. This fixed-length loop also works with tracing tools and
+# on GPUs.
 @inline function Base.rand(rng::AbstractRNG, d::Binomial)
     T = eltype(d)
     s = zero(T)
@@ -117,17 +93,14 @@ function entropy(d::Binomial)
     h = zero(T)
     for k in 0:(d.n)
         logp = logdensityof(d, convert(T, k))
-        # An atom of zero mass contributes nothing, where `exp(-Inf) * -Inf` gives `NaN`.
+        # An outcome with zero probability contributes zero, not `0 * -Inf = NaN`.
         h -= select(isfinite(logp), () -> exp(logp) * logp, () -> zero(T))
     end
     return h
 end
 
-#=
-  `cdf` and `ccdf` each sum their own tail rather than complementing the other, so
-  neither loses the small one to cancellation. Both clamp: summing every atom can
-  overshoot one by an ulp, and a probability above one is worse than a rounded one.
-=#
+# Sum each tail directly so a small tail is not lost by subtracting from one. Clamp
+# the result because rounding can make the sum slightly greater than one.
 function cdf(d::Binomial, x::Number)
     T = masstype(d, x)
     c = zero(T)
@@ -146,15 +119,9 @@ function ccdf(d::Binomial, x::Number)
     return min(c, one(T))
 end
 
-#=
-  Count the cumulative sums below `q`; a traced value cannot drive an early exit. The
-  partial sums come in the same order as in `cdf`, so a `q` that came from `cdf`
-  inverts exactly, as long as `cdf` resolved that atom at all.
-
-  For large `n` the sums reach one several atoms below `n`, since the mass out there
-  falls below an ulp of the running total. The count then stops early, which is why the
-  last atom is handled by the comparison rather than left to the sums.
-=#
+# Some tools cannot stop a loop based on `q`, so count every partial sum below it.
+# Using the same order as `cdf` makes `quantile(d, cdf(d, k))` return `k` unless the
+# CDF has already rounded to one.
 function Statistics.quantile(d::Binomial, q::Number)
     T = masstype(d, q)
     n = convert(T, d.n)
@@ -164,7 +131,7 @@ function Statistics.quantile(d::Binomial, q::Number)
         total += exp(logdensityof(d, convert(T, k)))
         i += select(total < q, () -> one(T), () -> zero(T))
     end
-    # A `q` at or above one asks for the largest atom; below one, `i` can overshoot it.
+    # A probability at or above one always returns the last outcome.
     return select(q >= one(T), () -> n, () -> min(i, n))
 end
 

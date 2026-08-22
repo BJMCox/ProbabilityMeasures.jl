@@ -2,29 +2,25 @@
     Bernoulli(p)
     Bernoulli()
 
-The Bernoulli measure on ``\\{0, 1\\}`` with success probability `p`, with probability
-mass function
+The Bernoulli measure on ``\\{0, 1\\}`` with success probability `p`. Its probability
+mass function is
 
 ```math
 P(X = 1) = p, \\qquad P(X = 0) = 1 - p.
 ```
 
-`Bernoulli()` gives the fair coin in `Float64`.
+`Bernoulli()` creates a fair coin using `Float64`.
 
 # Arguments
 
   - `p::Number`: the probability of a one.
 
-The `Number` bound permits numeric wrappers used by AD and tracing systems.
+Samples use the floating-point type of `p`. For example, `Bernoulli(0.5f0)` returns
+`Float32` zeros and ones, not integers or booleans.
 
-Draws are represented in `eltype(d)`, which is `float(typeof(p))`, so a draw has the
-same type as a density rather than being an `Int` or a `Bool`. `Categorical` does the
-same.
-
-Construction does not validate. A `p` outside ``[0, 1]`` gives a non-finite
-log-density at one atom and a finite, unnormalized one at the other, which is the
-situation [`validateparams`](@ref) exists for. Use [`checkparams`](@ref) on
-user-supplied probabilities.
+The constructor does not check `p`. An invalid value can still give a finite
+log-density for one outcome, so use [`validateparams`](@ref) for user input. Use
+[`checkparams`](@ref) when only a boolean result is needed.
 
 ```julia
 checkparams(Bernoulli(1.5))               # false
@@ -36,12 +32,6 @@ struct Bernoulli{P<:Number} <: DiscreteUnivariateMeasure
     p::P
 end
 
-#=
-  Julia's generated outer constructor preserves the parameter type. Validation is
-  handled by `checkparams`.
-=#
-
-# `Float64` here is a default, not a constraint. Write `Bernoulli(0.5f0)` for Float32.
 Bernoulli() = Bernoulli(0.5)
 
 Base.eltype(::Type{Bernoulli{P}}) where {P} = float(P)
@@ -53,10 +43,6 @@ support(::Bernoulli) = IntegerRange(0, 1)
 @inline function DensityInterface.logdensityof(d::Bernoulli, x::Number)
     T = masstype(d, x)
     p = convert(T, d.p)
-    #=
-      One `log` per atom rather than the masked sum `Categorical` needs: with two atoms
-      the branch is the whole computation.
-    =#
     return select(
         x == one(x),
         () -> logt(p),
@@ -64,7 +50,7 @@ support(::Bernoulli) = IntegerRange(0, 1)
     )
 end
 
-# Bernoulli draws do not have a pathwise derivative.
+# A sample changes in steps as `p` changes, so its derivative is zero almost everywhere.
 @inline function Base.rand(rng::AbstractRNG, d::Bernoulli)
     T = eltype(d)
     u = rand(rng, noisetype(d))
@@ -78,9 +64,7 @@ function entropy(d::Bernoulli)
     T = eltype(d)
     p = convert(T, d.p)
     q = one(T) - p
-    #=
-      A zero probability contributes nothing, where `p log p` would give `NaN`.
-    =#
+    # A zero probability contributes zero, not `0 * log(0) = NaN`.
     h = select(p > zero(p), () -> p * logt(p), () -> zero(T))
     return -h - select(q > zero(q), () -> q * log1pt(-p), () -> zero(T))
 end
@@ -103,16 +87,10 @@ function ccdf(d::Bernoulli, x::Number)
     )
 end
 
-#=
-  No `logcdf` or `logccdf`. Every value the two take is either `p` itself or `1 - p`,
-  which floating-point subtraction represents exactly, so the generic
-  `logt(cdf(d, x))` fallback is already as accurate as a written-out version.
-=#
+# The generic log-CDF methods already take the log of `p` or `1 - p` directly.
 
-#=
-  The smaller atom whenever its mass reaches `q`. An out-of-range or `NaN` `q` falls
-  through the comparison instead of throwing.
-=#
+# Return zero while its probability covers `q`, and one otherwise. Invalid `q` values
+# still return one of the two outcomes instead of throwing.
 function Statistics.quantile(d::Bernoulli, q::Number)
     T = masstype(d, q)
     p = convert(T, d.p)

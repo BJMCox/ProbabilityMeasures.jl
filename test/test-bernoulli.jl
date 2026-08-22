@@ -27,7 +27,7 @@ end
     @test typeof(Bernoulli(0.5f0)) === Bernoulli{Float32}
     @test typeof(Bernoulli(1//2)) === Bernoulli{Rational{Int}}
 
-    # Draws share the type of a density rather than being integers.
+    # Samples use the probability's floating-point type, not `Int`.
     @test eltype(Bernoulli(0.5f0)) === Float32
     @test eltype(Bernoulli(1//2)) === Float64
     @test isbits(Bernoulli(0.5))
@@ -37,16 +37,13 @@ end
     @test logdensityof(Bernoulli(1//2), 1.0f0) isa Float32
     @test logdensityof(Bernoulli(1//2), big"1.0") isa BigFloat
 
-    # Check that no Float64 intermediate caps BigFloat precision.
+    # The constant 2 must not reduce `BigFloat` precision.
     exact = logdensityof(Bernoulli(1//2), big"0.0")
     @test abs(exact + log(big"2.0")) < 1e-70
 end
 
 @testset "construction never validates" begin
-    #=
-      A probability outside the unit interval is non-finite at one atom and finite but
-      unnormalized at the other, which is the case `validateparams` exists for.
-    =#
+    # An invalid probability can leave one outcome finite but unnormalized.
     below = Bernoulli(-0.5)
     @test !checkparams(below)
     @test isnan(logdensityof(below, 1.0))
@@ -98,7 +95,7 @@ end
     @test logdensityof(Bernoulli(1.0), 1.0) == 0.0
     @test logdensityof(Bernoulli(1.0), 0.0) == -Inf
 
-    # A vanishing probability contributes nothing, where `p log p` would give `NaN`.
+    # A zero probability contributes zero to entropy instead of `NaN`.
     @test entropy(Bernoulli(0.0)) == 0.0
     @test entropy(Bernoulli(1.0)) == 0.0
     @test var(Bernoulli(0.0)) == 0.0
@@ -143,7 +140,6 @@ end
     @test logccdf(d, -1.0) == 0.0
     @test logccdf(d, 1.0) == -Inf
 
-    # `quantile` inverts `cdf` at each atom.
     @test [quantile(d, cdf(d, x)) for x in (0.0, 1.0)] == [0.0, 1.0]
 
     # Out-of-range probabilities still return an atom.
@@ -159,8 +155,8 @@ end
     end
 end
 
-@testset "a draw has no pathwise derivative" begin
-    # A Bernoulli draw is piecewise constant in `p`.
+@testset "sample derivative is zero" begin
+    # A sample changes in steps as `p` changes.
     g = ForwardDiff.derivative(q -> rand(Xoshiro(7), Bernoulli(q)), 0.3)
     @test iszero(g)
 end

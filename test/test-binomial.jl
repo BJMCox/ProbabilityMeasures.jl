@@ -23,11 +23,8 @@ end
     @test params(d) === (n=5, p=0.3)
 end
 
-@testset "the trial count is structural" begin
-    #=
-      `n` fixes the support and the length of every sum, so it stays a concrete
-      `Integer` while `p` carries the precision.
-    =#
+@testset "the trial count stays fixed" begin
+    # `n` stays an integer because it sets the support and loop lengths.
     @test typeof(Binomial(5, 0.3)) === Binomial{Int,Float64}
     @test typeof(Binomial(Int32(5), 0.3f0)) === Binomial{Int32,Float32}
     @test typeof(Binomial(5, 1//2)) === Binomial{Int,Rational{Int}}
@@ -41,10 +38,7 @@ end
     @test logdensityof(Binomial(3, 1//2), 1.0f0) isa Float32
     @test logdensityof(Binomial(3, 1//2), big"1.0") isa BigFloat
 
-    #=
-      The log-coefficient is a function of the counts alone, so it is the term most
-      likely to be computed at `Float64` and cap the result.
-    =#
+    # The coefficient must use `BigFloat` even though the counts are integers.
     exact = logdensityof(Binomial(3, 1//2), big"1.0")
     @test abs(exact - (log(big"3.0") - 3 * log(big"2.0"))) < 1e-70
 end
@@ -54,11 +48,7 @@ end
     @test !checkparams(negative)
     @test logdensityof(negative, 0.0) == -Inf
 
-    #=
-      A probability outside the unit interval is non-finite in the interior of the
-      support, but at `k = 0` or `k = n` the offending factor drops out and leaves a
-      finite, unnormalized value. That is the case `validateparams` exists for.
-    =#
+    # An invalid probability can leave an endpoint finite but unnormalized.
     below = Binomial(3, -0.5)
     @test !checkparams(below)
     @test isnan(logdensityof(below, 1.0))
@@ -96,10 +86,7 @@ end
 
 @testset "density is total off the support" begin
     d = Binomial(5, 0.3)
-    #=
-      `loggamma` throws for a negative non-integer argument, which is why the counts
-      are clamped before it sees them.
-    =#
+    # Counts are clamped before `loggamma` so values outside the support do not throw.
     for x in (-1.0, -1.5, 6.0, 2.5, Inf, -Inf, NaN, floatmax(Float64), -floatmax(Float64))
         @test logdensityof(d, x) == -Inf
     end
@@ -133,7 +120,7 @@ end
     @test entropy(d) == 0.0
     @test all(==(0.0), rand(Xoshiro(1), d, 8))
 
-    # A certain or impossible trial, where a vanishing count meets an infinite log.
+    # Zero terms must win over the infinite log at `p = 0` or `p = 1`.
     @test logdensityof(Binomial(3, 0.0), 0.0) == 0.0
     @test logdensityof(Binomial(3, 0.0), 1.0) == -Inf
     @test logdensityof(Binomial(3, 1.0), 3.0) == 0.0
@@ -151,12 +138,7 @@ end
             @test densityof(d, x) ≈ Distributions.pdf(r, k)
             @test cdf(d, x) ≈ Distributions.cdf(r, k)
             @test ccdf(d, x) ≈ Distributions.ccdf(r, k)
-            #=
-              `atol` as well as `rtol`, as in the suite's own cdf checks: where the
-              other tail is tiny these logs are a hair below zero, and summing to one
-              cannot resolve them. Distributions.jl reaches them through the
-              incomplete beta.
-            =#
+            # Relative error is not useful when these log values are near zero.
             @test logcdf(d, x) ≈ Distributions.logcdf(r, k) atol = 1e-12
             @test logccdf(d, x) ≈ Distributions.logccdf(r, k) atol = 1e-12
         end
@@ -185,7 +167,6 @@ end
         @test cdf(d, float(k)) + ccdf(d, float(k)) ≈ 1.0
     end
 
-    # `quantile` inverts `cdf` at each atom.
     @test [quantile(d, cdf(d, float(k))) for k in 0:5] == float.(0:5)
 
     # Out-of-range probabilities still return an atom.
@@ -202,8 +183,8 @@ end
     end
 end
 
-@testset "a draw has no pathwise derivative" begin
-    # A binomial draw is piecewise constant in `p`.
+@testset "sample derivative is zero" begin
+    # A sample changes in steps as `p` changes.
     g = ForwardDiff.derivative(q -> rand(Xoshiro(7), Binomial(5, q)), 0.3)
     @test iszero(g)
 end

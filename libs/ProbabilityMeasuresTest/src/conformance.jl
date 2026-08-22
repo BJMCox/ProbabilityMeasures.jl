@@ -45,21 +45,14 @@ _unflatten(θ::AbstractArray, p, offset::Int) = reshape(p[_range(θ, offset)], s
 
 _range(θ, offset::Int) = offset:(offset + length(θ) - 1)
 
-#=
-  Structural parameters, named per measure. `Binomial`'s `n` fixes loop bounds and the
-  support rather than shifting or scaling a density, so it can be neither perturbed nor
-  tracked nor converted to another float type. Flattening it to zero entries holds it
-  fixed everywhere the others are swept.
-
-  Named rather than recognized by type: an `Integer` parameter is not structural on its
-  own, and `_exactparams` deliberately hands ordinary parameters integer values.
-=#
-"The parameters of `d` that are structural, by name."
+# Some parameters must stay fixed during test sweeps. `Binomial.n` sets its support and
+# loop lengths. Identify these parameters by name because other integer values should
+# still be tested normally.
+"Names of the parameters that test sweeps must leave unchanged."
 _structural(d) = ()
 
 _isstructural(d, name::Symbol) = name in _structural(d)
 
-# Apply `f(d, name, θ)` to each parameter of `d`.
 function _mapfields(f, d)
     θs = params(d)
     return map((name, θ) -> f(d, name, θ), keys(θs), values(θs))
@@ -354,13 +347,7 @@ function test_genericity(d, xs, types)
     end
 end
 
-"""
-An instance of `typeof(d)` with exact parameters, or `nothing`.
-
-Integers wherever a parameter can take one. A probability cannot: `0` and `1` put a
-`-Inf` where the precision checks need a finite value, so a rational serves there
-instead.
-"""
+"A test instance with exact parameters, using rationals when integers are not suitable."
 _exactparams(d) = nothing
 
 #=
@@ -388,11 +375,8 @@ function test_exactness(exact, xs)
     end
 end
 
-#=
-  Use `Float32` for the first non-structural parameter and `Float64` for the rest.
-  Fewer than two of them leaves nothing to mix, as for a measure whose only other
-  parameter is structural.
-=#
+# Mix `Float32` and `Float64` across parameters that are allowed to change. There is
+# nothing to test when fewer than two such parameters exist.
 function _mixedparams(d)
     D = typeof(d)
     θs = params(d)
@@ -400,7 +384,7 @@ function _mixedparams(d)
     count(free) >= 2 || return nothing
     firstfree = findfirst(free)
     types = ntuple(i -> i == firstfree ? Float32 : Float64, Val(fieldcount(D)))
-    # A structural parameter keeps its own type; a float would not rebuild.
+    # Fixed parameters keep their original type.
     converted = ntuple(Val(fieldcount(D))) do i
         θ = values(θs)[i]
         return free[i] ? _aspoint(θ, types[i]) : θ

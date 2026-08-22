@@ -87,10 +87,8 @@ end
 """
     masstype(d, x)
 
-The float type of a probability mass of `d` evaluated at `x`.
-
-Follows the promotion rule in invariant 1 of [`AbstractProbabilityMeasure`](@ref), so a
-mass computed in it does not cap the precision of the argument.
+The floating-point type to use for the probability of `x`. It combines the parameter
+types with the type of `x`, so a `BigFloat` argument does not lose precision.
 """
 @inline function masstype(d::D, x::Number) where {D<:DiscreteMeasure}
     return float(promote_type(_promoted_paramtype(D), typeof(x)))
