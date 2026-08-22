@@ -114,6 +114,14 @@ _invalids(::Poisson) = (Poisson(-Inf), Poisson(Inf), Poisson(NaN))
 # Exercise the `k * log(λ)` term.
 _exactparams(::Poisson) = Poisson(2)
 
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Geometric [
+    Geometric(0.3), Geometric(0.5), Geometric(0.6f0)
+]
+
+_invalids(::Geometric) = (Geometric(0.0), Geometric(-0.5), Geometric(Inf), Geometric(NaN))
+
+_exactparams(::Geometric) = Geometric(1//2)
+
 @implements MeasureInterface{(:meanvector, :cov)} Multinomial [
     Multinomial(5, [0.2, 0.3, 0.5]),
     Multinomial(4, Float32[0.25, 0.25, 0.5]),
