@@ -11,7 +11,7 @@ density and sampling operations, and compatible with automatic differentiation,
 broadcasting on GPU arrays, and Reactant tracing.
 
 The package is experimental. At present it implements `Normal`, `LogNormal`,
-`Exponential`, `Uniform`, `Laplace`, `Categorical`, `Bernoulli`, `Binomial`, `MvNormal`,
+`Exponential`, `Uniform`, `Laplace`, `Cauchy`,  `Categorical`, `Bernoulli`, `Binomial`, `MvNormal`,
 and `Multinomial`.
 
 ## Installation
@@ -62,13 +62,16 @@ than throwing.
 ## Available API
 
 `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)`, `Uniform(a, b)`,
-`Laplace(μ, b)`, `Categorical(p)`, `Bernoulli(p)`, and `Binomial(n, p)` each support:
+`Laplace(μ, b)`, `Categorical(p)`, `Cauchy`, `Bernoulli(p)`, and `Binomial(n, p)` each support:
 
 - `densityof` and `logdensityof`
 - `cdf`, `ccdf`, `logcdf`, and `logccdf`
 - `quantile`, `mean`, `median`, `var`, `std`, and `entropy`
 - `rand` and Random's array-sampling methods
 - `params`, `support`, `insupport`, and `checkparams`
+
+`Cauchy(μ, σ)` has no finite mean or variance, so `mean`, `var` and `std` return `NaN`.
+`median` and `entropy` are exact.
 
 `Categorical(p)` assigns the probabilities in `p` to categories `1:length(p)`. Draws
 and quantiles use the promoted floating-point type of `p`:
@@ -200,7 +203,7 @@ See the [contribution guide](docs/src/90-contributing.md) for contribution guide
 ## Current scope
 
 ProbabilityMeasures.jl currently contains `Normal`, `LogNormal`, `Exponential`,
-`Uniform`, `Laplace`, `Categorical`, `Bernoulli`, `Binomial`, `MvNormal`, and
+`Uniform`, `Cauchy`, `Laplace`, `Categorical`, `Bernoulli`, `Binomial`, `MvNormal`, and
 `Multinomial`. Transformed or composite measures and Distributions.jl interoperability
 are not implemented yet.
 
