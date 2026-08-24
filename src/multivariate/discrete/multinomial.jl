@@ -1,11 +1,24 @@
 """
     Multinomial(n, p)
 
-The counts in `n` independent categorical trials with probabilities `p`.
+The counts in `n` independent categorical trials with probabilities `p`, supported on
+[`IntegerSimplex`](@ref)`(n, length(p))`, with probability mass function
 
-The entries of `p` must be non-negative and sum to one, and `n` must be
-non-negative. The constructor does not check these conditions; use
-[`validateparams`](@ref) for user input.
+```math
+P(X = x) = \\frac{n!}{\\prod_i x_i!} \\prod_i p_i^{x_i}.
+```
+
+`n` must be non-negative, and the entries of `p` must be non-negative and sum to one.
+The constructor does not check these conditions; use [`validateparams`](@ref) for user
+input.
+
+Density results follow Julia's promotion rules for `n`, `p`, and the evaluation point.
+Samples use `float(eltype(p))`. Density evaluation is linear in `length(p)`; sampling
+performs `n` categorical draws. Both operations support automatic differentiation and
+GPUs.
+
+`cdf`, `quantile`, `median`, and `entropy` are not implemented. Points outside the
+support, including vectors of the wrong length, have log-density `-Inf`.
 """
 struct Multinomial{N<:Integer,V<:AbstractVector{<:Number}} <: DiscreteMultivariateMeasure
     n::N
@@ -30,6 +43,7 @@ function DensityInterface.logdensityof(d::Multinomial, x::AbstractVector{<:Numbe
         logp -= loggamma(max(xᵢ, zero(T)) + one(T))
         logp += select(xᵢ == zero(T), () -> zero(T), () -> xᵢ * logt(pᵢ))
     end
+    # Avoid boxing the accumulator in the closure below.
     result = logp
     return select(insupport(d, x), () -> result, () -> convert(T, -Inf))
 end
