@@ -70,6 +70,9 @@ than throwing.
 - `rand` and Random's array-sampling methods
 - `params`, `support`, `insupport`, and `checkparams`
 
+`Cauchy(μ, σ)` has no finite mean or variance, so `mean`, `var` and `std` return `NaN`.
+`median` and `entropy` are exact.
+
 `Categorical(p)` assigns the probabilities in `p` to categories `1:length(p)`. Draws
 and quantiles use the promoted floating-point type of `p`:
 

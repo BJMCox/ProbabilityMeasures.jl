@@ -71,7 +71,7 @@ function Statistics.quantile(d::Cauchy, p::Number)
     valid = (p >= zero(p)) & (p <= one(p))
     q = abs(select(valid, () -> p, () -> one(float(p)) / 2))
     z = -cospi(q) / sinpi(q)
-    return select(valid, () -> xval(d, z), () -> oftype(float(z), NaN))
+    return xval(d, select(valid, () -> z, () -> oftype(z, NaN)))
 end
 
 function Base.show(io::IO, d::Cauchy)

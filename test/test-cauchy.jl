@@ -42,3 +42,16 @@ end
     @test isfinite(quantile(d, eps(Float64) / 2))
     @test isfinite(quantile(d, prevfloat(1.0)))
 end
+
+@testset "quantile types" begin
+    #=
+      An out-of-range `p` must widen to the parameters like any other argument. Typing
+      the `NaN` by `p` alone drops them and makes the return type a `Union`.
+    =#
+    @test quantile(Cauchy(0.0, 1.0), 1.5f0) isa Float64
+    @test quantile(Cauchy(big(0.0), big(1.0)), 1.5) isa BigFloat
+    @test quantile(Cauchy(0.0f0, 1.0f0), 0.25f0) isa Float32
+    @test Base.promote_op(quantile, Cauchy{Float64,Float64}, Float32) === Float64
+    @test isnan(quantile(Cauchy(0.0, 1.0), 1.5))
+    @test isnan(quantile(Cauchy(0.0, 1.0), -0.5))
+end
