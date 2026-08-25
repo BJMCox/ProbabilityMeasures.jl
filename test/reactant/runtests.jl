@@ -41,9 +41,11 @@ using Test
         got = @jit grad(Reactant.ConcreteRNumber(0.0), Reactant.ConcreteRNumber(1.0))
         @test [Float64(got[1]), Float64(got[2])] ≈ [0.8, 0.6] rtol = 1e-10
 
-        loss = p -> logdensityof(Geometric(p), 0.0)
+        # Evaluate away from zero so the `k * log(1 - p)` term contributes. The
+        # gradient is `1/p - k/(1 - p)`.
+        loss = p -> logdensityof(Geometric(p), 3.0)
         grad = p -> Enzyme.gradient(Enzyme.Reverse, loss, p)
         got = @jit grad(Reactant.ConcreteRNumber(0.5))
-        @test Float64(got[1]) ≈ 2.0 rtol = 1e-10
+        @test Float64(got[1]) ≈ -4.0 rtol = 1e-10
     end
 end

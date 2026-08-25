@@ -15,8 +15,25 @@ P(X = k) = p(1-p)^k.
 
   - `p::Number`: the probability of success, with ``0 < p \\le 1``.
 
-Samples use the floating-point type of `p`. The constructor does not check `p`; use
-[`validateparams`](@ref) for user input or [`checkparams`](@ref) for a boolean result.
+Samples use the floating-point type of `p`.
+
+# Cost
+
+Every operation takes constant time. Rounding limits how far `quantile(d, cdf(d, k))`
+can recover `k`: in `Float32` with `p = 0.25` the CDF stops separating outcomes near
+`k = 55` and reaches one near `k = 60`, past which `quantile` returns `Inf`. Below that
+point `quantile` is exact, and it always returns the smallest outcome whose CDF covers
+the given probability.
+
+The constructor does not check `p`. A probability above one still gives a finite
+log-density at `k = 0`, so validate user input with [`validateparams`](@ref). Use
+[`checkparams`](@ref) when only a boolean result is needed.
+
+```julia
+checkparams(Geometric(1.1))               # false
+logdensityof(Geometric(1.1), 0.0)         # finite, and wrong
+isnan(logdensityof(Geometric(1.1), 1.0))  # true
+```
 """
 struct Geometric{P<:Number} <: DiscreteUnivariateMeasure
     p::P
@@ -33,6 +50,7 @@ support(::Geometric) = NonNegativeIntegers()
 @inline function DensityInterface.logdensityof(d::Geometric, x::Number)
     T = masstype(d, x)
     k, p = convert(T, x), convert(T, d.p)
+    # At `p == 1` the tail factor is `0 * -Inf`. Define it as zero.
     tail = select(k == zero(T), () -> zero(T), () -> k * log1pt(-p))
     return select(insupport(d, x), () -> logt(p) + tail, () -> convert(T, -Inf))
 end
@@ -41,6 +59,7 @@ end
     T = eltype(d)
     u = rand(rng, noisetype(d))
     p = convert(T, d.p)
+    # `log1p(-u)` rather than `log(1 - u)`, so an exact zero draw gives zero, not `Inf`.
     return floor(log1pt(-u) / log1pt(-p))
 end
 
@@ -87,8 +106,14 @@ function Statistics.quantile(d::Geometric, q::Number)
     T = masstype(d, q)
     p, probability = convert(T, d.p), convert(T, q)
     k = floor(log1pt(-probability) / log1pt(-p))
+    #=
+      Inverting the tail overshoots by one whenever `q` lands exactly on a CDF value, so
+      step back if the previous outcome already covers it. This is what makes
+      `quantile(d, cdf(d, k)) == k` hold.
+    =#
     previous_cdf = -expm1(k * log1pt(-p))
     k -= select(probability <= previous_cdf, () -> one(T), () -> zero(T))
+    # A point mass at zero would otherwise divide `-Inf` by `-Inf`.
     return select(p == one(T), () -> zero(T), () -> max(k, zero(T)))
 end
 
