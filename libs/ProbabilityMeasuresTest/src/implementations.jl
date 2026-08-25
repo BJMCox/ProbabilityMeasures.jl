@@ -104,6 +104,16 @@ function default_testpoints(d::Binomial)
     return [float(k) for k in 0:(d.n) if invertible(k)]
 end
 
+@implements MeasureInterface{UNIVARIATE_OPTIONALS} Poisson [
+    Poisson(0.5), Poisson(4.0), Poisson(2.5f0)
+]
+
+# Finite negative rates need separate tests because their density is finite at zero.
+_invalids(::Poisson) = (Poisson(-Inf), Poisson(Inf), Poisson(NaN))
+
+# Exercise the `k * log(λ)` term.
+_exactparams(::Poisson) = Poisson(2)
+
 @implements MeasureInterface{(:meanvector, :cov)} Multinomial [
     Multinomial(5, [0.2, 0.3, 0.5]),
     Multinomial(4, Float32[0.25, 0.25, 0.5]),

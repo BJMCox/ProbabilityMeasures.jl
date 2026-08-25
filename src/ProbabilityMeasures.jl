@@ -34,6 +34,7 @@ include("univariate/continuous/cauchy.jl")
 include("univariate/discrete/categorical.jl")
 include("univariate/discrete/bernoulli.jl")
 include("univariate/discrete/binomial.jl")
+include("univariate/discrete/poisson.jl")
 
 include("multivariate/continuous/mvnormal.jl")
 include("multivariate/discrete/multinomial.jl")
@@ -52,6 +53,7 @@ export Support,
     RealLine,
     NonNegativeReals,
     PositiveReals,
+    NonNegativeIntegers,
     RealInterval,
     IntegerRange,
     IntegerSimplex,
@@ -77,6 +79,7 @@ export Cauchy
 export Categorical
 export Bernoulli
 export Binomial
+export Poisson
 export MvNormal
 export Multinomial
 
