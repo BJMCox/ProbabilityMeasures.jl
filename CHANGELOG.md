@@ -12,9 +12,9 @@ and this project adheres to [Semantic Versioning].
 - `AbstractProbabilityMeasure{F,S}` and the normalized-only measure interface:
   `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, and the
   moment/distribution-function surface.
-- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `RealInterval`, `IntegerRange`,
-  `IntegerSimplex` and `RealVectors` supports. `UnitInterval` will arrive with the first
-  measure that needs one.
+- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `NonNegativeIntegers`,
+  `RealInterval`, `IntegerRange`, `IntegerSimplex` and `RealVectors` supports.
+  `UnitInterval` will arrive with the first measure that needs one.
 - `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)` and `Uniform(a, b)`, with
   heterogeneous parameter types and no promotion or validation at construction.
 - `MvNormal(μ, L)`, the first multivariate measure, with the
@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning].
   substitute fall back to a truncated sum that costs `O(λ)` and cannot run in traced or
   device-side code. Entropy always sums. Sampling uses CDF inversion to avoid underflow
   at large rates. These operations return `NaN` if the truncation bound exceeds `Int`.
+- `Geometric(p)`, counting failures before the first success. Every operation is closed
+  form, entropy included, and `logcdf` and `logccdf` stay finite where `cdf` and `ccdf`
+  underflow. `quantile` returns the smallest outcome whose CDF covers the probability,
+  so `quantile(d, cdf(d, k))` recovers `k` until rounding makes the CDF reach one.
 - `validateparams(d)`, which returns `d` or throws a `DomainError`, for the boundary
   where user-supplied parameters enter. It earns its place on `Categorical`, whose
   sum-to-one is the one invalid parameter a density cannot report: an unnormalized `p`
