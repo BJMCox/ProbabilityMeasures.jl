@@ -27,6 +27,8 @@ end
     @test logdensityof(Weibull(1.0, 2.0), 0.0) == -log(2.0)
     @test logdensityof(Weibull(2.0, 2.0), 0.0) == -Inf
     @test logdensityof(Weibull(0.5, 2.0), -1.0) == -Inf
+    @test logdensityof(Weibull(2.0, 2.0), Inf) == -Inf
+    @test logdensityof(Weibull(1.0, 2.0), Inf) == -Inf
 end
 
 @testset "distribution-function tails" begin
@@ -62,8 +64,14 @@ end
     end
 end
 
-@testset "inverse-CDF sampling" begin
+@testset "sampling" begin
     d = Weibull(1.5, 2.0)
     seed = 0x4153554b41
-    @test rand(Xoshiro(seed), d) == quantile(d, rand(Xoshiro(seed), Float64))
+    e = -log(rand(Xoshiro(seed), Float64))
+    @test rand(Xoshiro(seed), d) == 2.0 * e^inv(1.5)
+
+    # For `x = θ e^(1/α)`, the derivative in `θ` is `e^(1/α) = x/θ`.
+    x = rand(Xoshiro(7), d)
+    dθ = ForwardDiff.derivative(θ -> rand(Xoshiro(7), Weibull(1.5, θ)), 2.0)
+    @test dθ ≈ x / 2.0
 end

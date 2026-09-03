@@ -28,7 +28,13 @@ _exactparams(::Exponential) = Exponential(1)
 ]
 
 function _invalids(::Weibull)
-    return (Weibull(-1.0, 1.0), Weibull(0.0, 1.0), Weibull(1.0, 0.0), Weibull(Inf, 1.0))
+    return (
+        Weibull(-1.0, 1.0),
+        Weibull(0.0, 1.0),
+        Weibull(1.0, 0.0),
+        Weibull(Inf, 1.0),
+        Weibull(1.0, Inf),
+    )
 end
 
 _exactparams(::Weibull) = Weibull(2, 3)
