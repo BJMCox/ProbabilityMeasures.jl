@@ -10,13 +10,12 @@ and this project adheres to [Semantic Versioning].
 ### Added
 
 - `AbstractProbabilityMeasure{F,S}` and the normalized-only measure interface:
-  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, and the
-  moment/distribution-function surface.
-- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `NonNegativeIntegers`,
-  `RealInterval`, `IntegerRange`, `IntegerSimplex` and `RealVectors` supports.
-  `UnitInterval` will arrive with the first measure that needs one.
-- `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)`, `Weibull(α, θ)` and
-  `Uniform(a, b)`, with
+  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, `size` (the
+  shape of a draw, `()` or `(n,)`), and the moment/distribution-function surface.
+- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `RealInterval`, `IntegerRange`,
+  `IntegerSimplex` and `RealVectors` supports. `UnitInterval` will arrive with the first
+  measure that needs one.
+- `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)` and `Uniform(a, b)`, with
   heterogeneous parameter types and no promotion or validation at construction.
 - `MvNormal(μ, L)`, the first multivariate measure, with the
   `ContinuousMultivariateMeasure` alias it dispatches on. It is parameterized by the
@@ -60,6 +59,10 @@ and this project adheres to [Semantic Versioning].
   form, entropy included, and `logcdf` and `logccdf` stay finite where `cdf` and `ccdf`
   underflow. `quantile` returns the smallest outcome whose CDF covers the probability,
   so `quantile(d, cdf(d, k))` recovers `k` until rounding makes the CDF reach one.
+- `Weibull(α, θ)`, with shape `α` and scale `θ`. Every operation is closed form, the
+  direct `logccdf` stays accurate in the upper tail, and the density at zero follows
+  the shape: infinite below `α = 1`, `1/θ` at it, zero above. Sampling is a
+  reparameterized inverse-CDF draw.
 - `validateparams(d)`, which returns `d` or throws a `DomainError`, for the boundary
   where user-supplied parameters enter. It earns its place on `Categorical`, whose
   sum-to-one is the one invalid parameter a density cannot report: an unnormalized `p`
