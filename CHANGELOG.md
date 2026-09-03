@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning].
 ### Added
 
 - `AbstractProbabilityMeasure{F,S}` and the normalized-only measure interface:
-  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, and the
-  moment/distribution-function surface.
-- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `NonNegativeIntegers`,
-  `RealInterval`, `IntegerRange`, `IntegerSimplex` and `RealVectors` supports.
-  `UnitInterval` will arrive with the first measure that needs one.
+  `logdensityof`, `rand`, `support`, `insupport`, `params`, `checkparams`, `size` (the
+  shape of a draw, `()` or `(n,)`), and the moment/distribution-function surface.
+- The `RealLine`, `NonNegativeReals`, `PositiveReals`, `RealInterval`, `IntegerRange`,
+  `IntegerSimplex` and `RealVectors` supports. `UnitInterval` will arrive with the first
+  measure that needs one.
 - `Normal(μ, σ)`, `LogNormal(μ, σ)`, `Exponential(θ)` and `Uniform(a, b)`, with
   heterogeneous parameter types and no promotion or validation at construction.
 - `MvNormal(μ, L)`, the first multivariate measure, with the
